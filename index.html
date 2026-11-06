@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Echoes of Elysium - Láseres Equilibrados</title>
+    <title>Echoes of Elysium - Boss Parry Auto-guiado</title>
     <style>
         body {
             margin: 0;
@@ -31,16 +31,17 @@
         }
         canvas {
             background-color: #020204;
-            box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+            box-shadow: 0 0 35px rgba(0, 240, 255, 0.25);
             border: 1px solid #1a1a2e;
             border-radius: 8px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
     <h1>ECHOES OF ELYSIUM</h1>
-    <p>Usa <b>A / D</b> para moverte, <b>W</b> para saltar y <b>Espacio/Clic</b> para lanzar tus ecos. ¡Velocidad de láseres ajustada!</p>
+    <p>Un viaje cibernético de ecolocación y precisión</p>
     
     <canvas id="gameCanvas" width="800" height="500"></canvas>
 
@@ -48,12 +49,13 @@
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
-        // Estado del Jugador
+        let estadoJuego = "MENU";
+
         let player = {
-            x: 100,
-            y: 400,
+            x: 400,
+            y: 350,
             radius: 12,
-            speed: 4.5,
+            speed: 5.5,
             vx: 0,
             vy: 0
         };
@@ -65,70 +67,163 @@
         let ondasRestantes = 3;
         let vidas = 3;
         let contadorFrames = 0;
+        let temblorPantalla = 0;
 
+        let mouseX = 0;
+        let mouseY = 0;
+
+        let estrellasFondo = [];
+        let particulasVacio = [];
         let particulasCristal = [];
         let particulasBoss = [];
-        let proyectilesBoss = [];
+        let particulasHumo = [];
 
-        // Estado del Jefe Final (Nivel 7)
+        for (let i = 0; i < 70; i++) {
+            estrellasFondo.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 1.5 + 0.5,
+                alpha: Math.random(),
+                velocidadParpadeo: Math.random() * 0.03 + 0.01
+            });
+        }
+
+        for (let i = 0; i < 40; i++) {
+            particulasVacio.push({
+                x: Math.random() * canvas.width,
+                y: canvas.height - Math.random() * 45,
+                vx: (Math.random() - 0.5) * 1.2,
+                vy: -Math.random() * 0.8 - 0.2,
+                size: Math.random() * 3 + 1,
+                alpha: Math.random() * 0.7 + 0.3
+            });
+        }
+
         let boss = {
             x: 400,
-            y: 110,
-            radius: 35,
+            y: 100,
+            radius: 40,
             vidaMax: 10,
             vida: 10,
-            invulnerableCooldown: 0,
+            fase: 1,
             derrotado: false
         };
 
-        // Controles
+        let dronTutorial = {
+            x: 400,
+            y: 110,
+            dir: 1
+        };
+
+        let proyectilesBoss = [];
+        let proyectilesTutorial = [];
+        let rayosCaoticos = [];
+
         let keys = {};
-        window.addEventListener("keydown", (e) => keys[e.code] = true);
+        window.addEventListener("keydown", (e) => {
+            keys[e.code] = true;
+            if (e.code === "Space" || e.code === "Enter") {
+                e.preventDefault();
+                accionarAccion();
+            }
+        });
         window.addEventListener("keyup", (e) => keys[e.code] = false);
 
-        // Ondas de sonido (Ecolocación / Ataque)
+        canvas.addEventListener("mousemove", (e) => {
+            let rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
         let ondas = [];
 
-        function emitirOnda(x, y) {
-            if (esperandoSiguienteNivel || juegoTerminado || gameOver) return;
-            if (ondasRestantes > 0) {
-                ondas.push({ x: x, y: y, radioActual: 5, radioMax: 280, alpha: 1.0 });
-                ondasRestantes--;
+        function accionarAccion() {
+            if (estadoJuego === "MENU") return;
+
+            if (estadoJuego === "GAME_OVER") {
+                reiniciarJuegoCompleto();
+                return;
+            }
+
+            if (esperandoSiguienteNivel) {
+                avanzarNivel();
+                return;
+            }
+
+            if (estadoJuego === "TUTORIAL") {
+                proyectilesTutorial.forEach(pr => {
+                    if (!pr.devuelto) {
+                        let dist = Math.hypot(player.x - pr.x, player.y - pr.y);
+                        if (dist < 85) {
+                            pr.devuelto = true;
+                            temblorPantalla = 5;
+                            pr.vy = -12;
+                        }
+                    }
+                });
+            } else if (nivelActual === 7 && !boss.derrotado) {
+                proyectilesBoss.forEach(pr => {
+                    if (!pr.devuelto) {
+                        let dist = Math.hypot(player.x - pr.x, player.y - pr.y);
+                        if (dist < 85) {
+                            pr.devuelto = true;
+                            temblorPantalla = 6;
+                            
+                            if (pr.esRojo) {
+                                pr.vy = -14;
+                                pr.esParry = true;
+                            } else {
+                                pr.vy = -9.5;
+                            }
+                        }
+                    }
+                });
+            } else {
+                if (ondasRestantes > 0) {
+                    ondas.push({ x: player.x, y: player.y, radioActual: 5, radioMax: 280, alpha: 1.0 });
+                    ondasRestantes--;
+                }
             }
         }
+
+        window.addEventListener("click", (e) => {
+            if (estadoJuego === "MENU") {
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 240 && mouseY <= 290) {
+                    estadoJuego = "JUEGO";
+                    cargarNivel(1);
+                    return;
+                }
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 310 && mouseY <= 360) {
+                    estadoJuego = "TUTORIAL";
+                    proyectilesTutorial = [];
+                    player.x = 400;
+                    player.y = 350;
+                    return;
+                }
+            } else if (estadoJuego === "TUTORIAL") {
+                if (mouseX >= 50 && mouseX <= 200 && mouseY >= 440 && mouseY <= 480) {
+                    estadoJuego = "MENU";
+                    return;
+                }
+                if (mouseX >= 590 && mouseX <= 750 && mouseY >= 440 && mouseY <= 480) {
+                    estadoJuego = "JUEGO";
+                    cargarNivel(1);
+                    return;
+                }
+                accionarAccion();
+            } else {
+                accionarAccion();
+            }
+        });
 
         function reiniciarJuegoCompleto() {
             vidas = 3;
             gameOver = false;
             juegoTerminado = false;
-            boss.vida = boss.vidaMax;
-            boss.derrotado = false;
+            estadoJuego = "JUEGO";
             cargarNivel(1);
         }
 
-        window.addEventListener("click", () => {
-            if (gameOver) {
-                reiniciarJuegoCompleto();
-            } else if (esperandoSiguienteNivel) {
-                avanzarNivel();
-            } else {
-                emitirOnda(player.x, player.y);
-            }
-        });
-
-        window.addEventListener("keydown", (e) => {
-            if (e.code === "Space") {
-                if (gameOver) {
-                    reiniciarJuegoCompleto();
-                } else if (esperandoSiguienteNivel) {
-                    avanzarNivel();
-                } else {
-                    emitirOnda(player.x, player.y);
-                }
-            }
-        });
-
-        // Definición de los 7 Niveles (Intervalos más altos = Láseres más lentos y justos)
         const niveles = {
             1: {
                 color: "#00f0ff",
@@ -140,7 +235,7 @@
                     { x: 420, y: 120, w: 150, h: 20, alphaVisibilidad: 0 }
                 ],
                 laseres: [],
-                cristal: { x: 485, y: 80, w: 24, h: 40, activo: false },
+                cristal: { x: 485, y: 80, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 100, y: 400 }
             },
             2: {
@@ -152,10 +247,8 @@
                     { x: 100, y: 210, w: 130, h: 20, alphaVisibilidad: 0 },
                     { x: 350, y: 140, w: 180, h: 20, alphaVisibilidad: 0 }
                 ],
-                laseres: [
-                    { x1: 200, y1: 320, x2: 500, y2: 320, intervalo: 240 } 
-                ],
-                cristal: { x: 430, y: 100, w: 24, h: 40, activo: false },
+                laseres: [{ x1: 200, y1: 320, x2: 500, y2: 320, intervalo: 240 }],
+                cristal: { x: 430, y: 100, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 700, y: 400 }
             },
             3: {
@@ -172,7 +265,7 @@
                     { x1: 150, y1: 340, x2: 450, y2: 340, intervalo: 200 },
                     { x1: 300, y1: 190, x2: 650, y2: 190, intervalo: 200 }
                 ],
-                cristal: { x: 205, y: 50, w: 24, h: 40, activo: false },
+                cristal: { x: 205, y: 50, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 100, y: 410 }
             },
             4: {
@@ -189,7 +282,7 @@
                     { x1: 100, y1: 340, x2: 450, y2: 340, intervalo: 170 },
                     { x1: 200, y1: 200, x2: 550, y2: 200, intervalo: 170 }
                 ],
-                cristal: { x: 140, y: 60, w: 24, h: 40, activo: false },
+                cristal: { x: 140, y: 60, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 380, y: 410 }
             },
             5: {
@@ -207,7 +300,7 @@
                     { x1: 250, y1: 250, x2: 650, y2: 250, intervalo: 140 },
                     { x1: 150, y1: 120, x2: 500, y2: 120, intervalo: 140 }
                 ],
-                cristal: { x: 220, y: 40, w: 24, h: 40, activo: false },
+                cristal: { x: 220, y: 40, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 100, y: 400 }
             },
             6: {
@@ -225,23 +318,17 @@
                     { x1: 150, y1: 250, x2: 600, y2: 250, intervalo: 110 },
                     { x1: 200, y1: 110, x2: 650, y2: 110, intervalo: 110 }
                 ],
-                cristal: { x: 585, y: 50, w: 24, h: 40, activo: false },
+                cristal: { x: 585, y: 50, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
                 spawn: { x: 690, y: 400 }
             },
             7: {
-                color: "#ff0000",
+                color: "#00f0ff",
                 plataformas: [
-                    { x: 50, y: 430, w: 150, h: 20, alphaVisibilidad: 0 },
-                    { x: 600, y: 430, w: 150, h: 20, alphaVisibilidad: 0 },
-                    { x: 180, y: 320, w: 120, h: 20, alphaVisibilidad: 0 },
-                    { x: 500, y: 320, w: 120, h: 20, alphaVisibilidad: 0 },
-                    { x: 320, y: 220, w: 160, h: 20, alphaVisibilidad: 0 }
+                    { x: 150, y: 380, w: 500, h: 24, alphaVisibilidad: 1.0 }
                 ],
-                laseres: [
-                    { x1: 50, y1: 370, x2: 750, y2: 370, intervalo: 160 }
-                ],
-                cristal: { x: 388, y: 160, w: 24, h: 40, activo: false },
-                spawn: { x: 100, y: 400 }
+                laseres: [],
+                cristal: { x: 388, y: 320, w: 24, h: 40, activo: false, alphaVisibilidad: 0 },
+                spawn: { x: 400, y: 350 }
             }
         };
 
@@ -251,12 +338,17 @@
             nivelActual = num;
             if (niveles[nivelActual]) {
                 nivel = niveles[nivelActual];
-                ondasRestantes = (nivelActual === 7) ? 999 : 3; 
+                ondasRestantes = (nivelActual === 7) ? 0 : 3; 
                 contadorFrames = 0;
                 particulasCristal = [];
                 proyectilesBoss = [];
+                particulasHumo = [];
+                rayosCaoticos = [];
+                temblorPantalla = 0;
                 if (nivelActual === 7) {
-                    boss.vida = boss.vidaMax;
+                    boss.vidaMax = 10;
+                    boss.vida = 10;
+                    boss.fase = 1;
                     boss.derrotado = false;
                 }
                 reiniciarPosicionJugador();
@@ -280,11 +372,29 @@
             player.vx = 0;
             player.vy = 0;
             nivel.cristal.activo = false;
+            nivel.cristal.alphaVisibilidad = (nivelActual === 7 && boss.derrotado) ? 1.0 : 0;
             esperandoSiguienteNivel = false;
             ondas = [];
             contadorFrames = 0;
             if (nivelActual !== 7) ondasRestantes = 3;
-            nivel.plataformas.forEach(p => p.alphaVisibilidad = 0);
+            nivel.plataformas.forEach(p => {
+                p.alphaVisibilidad = (nivelActual === 7) ? 1.0 : 0;
+            });
+        }
+
+        function mecerAnimaciones() {
+            estrellasFondo.forEach(st => {
+                st.alpha += Math.sin(contadorFrames * st.velocidadParpadeo) * 0.015;
+            });
+
+            particulasVacio.forEach(pt => {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                if (pt.y < canvas.height - 50) {
+                    pt.y = canvas.height - 5;
+                    pt.x = Math.random() * canvas.width;
+                }
+            });
         }
 
         function avanzarNivel() {
@@ -296,44 +406,96 @@
             }
         }
 
-        function dispararProyectilBoss() {
-            let dx = player.x - boss.x;
-            let dy = player.y - boss.y;
-            let dist = Math.hypot(dx, dy);
-            let speed = 3.5;
-            proyectilesBoss.push({
-                x: boss.x,
-                y: boss.y,
-                vx: (dx / dist) * speed,
-                vy: (dy / dist) * speed,
-                radius: 7
-            });
-        }
-
         function actualizar() {
+            contadorFrames++;
+            if (temblorPantalla > 0) temblorPantalla -= 0.5;
+
+            mecerAnimaciones();
+
+            if (estadoJuego === "MENU") return;
+
+            if (estadoJuego === "TUTORIAL") {
+                if (keys["KeyA"] || keys["ArrowLeft"]) player.x -= player.speed;
+                if (keys["KeyD"] || keys["ArrowRight"]) player.x += player.speed;
+                player.vy += 0.38;
+                player.y += player.vy;
+
+                if (player.x < 15) player.x = 15;
+                if (player.x > canvas.width - 15) player.x = canvas.width - 15;
+
+                let pTut = { x: 150, y: 380, w: 500, h: 24 };
+                let enRangoXTut = player.x + player.radius > pTut.x && player.x - player.radius < pTut.x + pTut.w;
+
+                if (
+                    enRangoXTut &&
+                    player.y + player.radius >= pTut.y &&
+                    player.y + player.radius <= pTut.y + pTut.h / 2 &&
+                    player.vy > 0
+                ) {
+                    player.y = pTut.y - player.radius;
+                    player.vy = 0;
+                    if (keys["KeyW"] || keys["ArrowUp"]) player.vy = -10;
+                }
+
+                if (player.y > canvas.height + 15) {
+                    player.x = 400;
+                    player.y = 350;
+                    player.vy = 0;
+                }
+
+                dronTutorial.x += 2.5 * dronTutorial.dir;
+                if (dronTutorial.x > 580) dronTutorial.dir = -1;
+                if (dronTutorial.x < 220) dronTutorial.dir = 1;
+
+                if (contadorFrames % 100 === 0) {
+                    let esRojo = Math.random() < 0.5;
+                    proyectilesTutorial.push({
+                        x: dronTutorial.x,
+                        y: dronTutorial.y,
+                        vy: 2.2,
+                        vx: (Math.random() - 0.5) * 1.5,
+                        radius: esRojo ? 10 : 8,
+                        esRojo: esRojo,
+                        devuelto: false
+                    });
+                }
+
+                proyectilesTutorial.forEach(pr => {
+                    if (pr.devuelto) {
+                        // Auto-guiado suave hacia el Dron de práctica
+                        pr.vx = (dronTutorial.x - pr.x) * 0.14;
+                    }
+                    pr.x += pr.vx;
+                    pr.y += pr.vy;
+                    if (pr.devuelto) {
+                        let dDron = Math.hypot(dronTutorial.x - pr.x, dronTutorial.y - pr.y);
+                        if (dDron < 35) {
+                            pr.destruir = true;
+                            temblorPantalla = 8;
+                        }
+                    }
+                });
+                proyectilesTutorial = proyectilesTutorial.filter(pr => !pr.destruir && pr.y < canvas.height && pr.y > 0);
+
+                return;
+            }
+
             if (juegoTerminado || esperandoSiguienteNivel || gameOver) return;
 
-            contadorFrames++;
-
-            // Movimiento lateral
             if (keys["KeyA"] || keys["ArrowLeft"]) player.x -= player.speed;
             if (keys["KeyD"] || keys["ArrowRight"]) player.x += player.speed;
 
-            // Gravedad
             player.vy += 0.38;
             player.y += player.vy;
 
-            // Límites de pantalla horizontal
             if (player.x < 15) player.x = 15;
             if (player.x > canvas.width - 15) player.x = canvas.width - 15;
 
-            // Caída al vacío
             if (player.y > canvas.height + 15) {
                 perderVida();
                 return;
             }
 
-            // Comprobar colisión con los láseres rítmicos
             if (contadorFrames > 30) {
                 nivel.laseres.forEach(l => {
                     let ciclo = Math.floor(contadorFrames / l.intervalo) % 2;
@@ -350,41 +512,160 @@
                 });
             }
 
-            // Lógica del Boss en Nivel 7
             if (nivelActual === 7 && !boss.derrotado) {
-                boss.x = 400 + Math.sin(contadorFrames * 0.03) * 220;
+                let pctVida = boss.vida / boss.vidaMax;
 
-                if (boss.invulnerableCooldown > 0) boss.invulnerableCooldown--;
+                if (pctVida > 0.75) boss.fase = 1;
+                else if (pctVida > 0.50) boss.fase = 2;
+                else if (pctVida > 0.25) boss.fase = 3;
+                else boss.fase = 4;
 
-                if (contadorFrames % 110 === 0) {
-                    dispararProyectilBoss();
+                let velOscilacion = 0.02 * boss.fase;
+                let amplitud = 190 + (boss.fase >= 3 ? 40 : 0);
+                boss.x = 400 + Math.sin(contadorFrames * velOscilacion) * amplitud;
+
+                if (boss.fase >= 3 && Math.random() < 0.65) {
+                    particulasHumo.push({
+                        x: boss.x + (Math.random() - 0.5) * 45,
+                        y: boss.y + (Math.random() - 0.5) * 20,
+                        vx: (Math.random() - 0.5) * 1.5,
+                        vy: -Math.random() * 2 - 0.6,
+                        radius: Math.random() * 6 + 4,
+                        alpha: 0.8,
+                        color: Math.random() < 0.4 ? "rgba(255, 60, 0, " : "rgba(80, 80, 90, "
+                    });
+                }
+
+                particulasHumo.forEach(ph => {
+                    ph.x += ph.vx;
+                    ph.y += ph.vy;
+                    ph.radius += 0.15;
+                    ph.alpha -= 0.02;
+                });
+                particulasHumo = particulasHumo.filter(ph => ph.alpha > 0);
+
+                if (boss.fase >= 2 && contadorFrames % (boss.fase >= 3 ? 75 : 110) === 0) {
+                    rayosCaoticos.push({
+                        x: 180 + Math.random() * 440,
+                        advertencia: 45,
+                        duracion: 30,
+                        ancho: 16
+                    });
+                }
+
+                rayosCaoticos.forEach(ry => {
+                    if (ry.advertencia > 0) {
+                        ry.advertencia--;
+                    } else if (ry.duracion > 0) {
+                        ry.duracion--;
+                        if (Math.abs(player.x - ry.x) < player.radius + ry.ancho / 2) {
+                            perderVida();
+                        }
+                    }
+                });
+                rayosCaoticos = rayosCaoticos.filter(ry => ry.duracion > 0);
+
+                if (boss.fase === 4 && contadorFrames % 95 === 0) {
+                    let offsetDronX = Math.sin(contadorFrames * 0.05) * 15;
+                    let dLeftX = boss.x - 70 + offsetDronX;
+                    let dRightX = boss.x + 70 - offsetDronX;
+                    let dY = boss.y + 25;
+
+                    [dLeftX, dRightX].forEach(dx => {
+                        proyectilesBoss.push({
+                            x: dx,
+                            y: dY,
+                            vx: (Math.random() - 0.5) * 1.2,
+                            vy: 3.0,
+                            radius: 7,
+                            esRojo: false,
+                            devuelto: false,
+                            esParry: false
+                        });
+                    });
+                }
+
+                let cadencia = boss.fase === 1 ? 120 : (boss.fase === 2 ? 90 : (boss.fase === 3 ? 70 : 55));
+                if (contadorFrames % cadencia === 0) {
+                    let esRojo = Math.random() < (0.35 + boss.fase * 0.08);
+                    proyectilesBoss.push({
+                        x: boss.x,
+                        y: boss.y,
+                        vx: (Math.random() - 0.5) * (1.8 * boss.fase),
+                        vy: 2.2 * (esRojo ? 1.3 : 1.0) * (1 + boss.fase * 0.12),
+                        radius: esRojo ? 10 : 8,
+                        esRojo: esRojo,
+                        devuelto: false,
+                        esParry: false
+                    });
                 }
 
                 proyectilesBoss.forEach(pr => {
+                    // SISTEMA AUTO-GUIADO MAGNÉTICO AL DEVOLVER
+                    if (pr.devuelto) {
+                        pr.vx = (boss.x - pr.x) * 0.14; // Persigue al Boss dinámicamente en el aire
+                    }
+
                     pr.x += pr.vx;
                     pr.y += pr.vy;
 
-                    let d = Math.hypot(player.x - pr.x, player.y - pr.y);
-                    if (d < player.radius + pr.radius) {
-                        perderVida();
+                    if (!pr.devuelto) {
+                        let d = Math.hypot(player.x - pr.x, player.y - pr.y);
+                        if (d < player.radius + pr.radius) {
+                            perderVida();
+                        }
+                    } else {
+                        let dBoss = Math.hypot(boss.x - pr.x, boss.y - pr.y);
+                        if (dBoss < boss.radius + pr.radius) {
+                            boss.vida--;
+                            pr.destruir = true;
+                            temblorPantalla = pr.esParry ? 18 : 10;
+
+                            let cantidadParticulas = pr.esParry ? 30 : 15;
+                            for (let i = 0; i < cantidadParticulas; i++) {
+                                particulasBoss.push({
+                                    x: boss.x,
+                                    y: boss.y,
+                                    vx: (Math.random() - 0.5) * (pr.esParry ? 14 : 9),
+                                    vy: (Math.random() - 0.5) * (pr.esParry ? 14 : 9),
+                                    alpha: 1.0,
+                                    color: pr.esParry ? "#00f0ff" : "#ff0055"
+                                });
+                            }
+
+                            if (boss.vida <= 0) {
+                                boss.derrotado = true;
+                                temblorPantalla = 25;
+                            }
+                        }
                     }
                 });
-                proyectilesBoss = proyectilesBoss.filter(pr => pr.x > 0 && pr.x < canvas.width && pr.y > 0 && pr.y < canvas.height);
+                proyectilesBoss = proyectilesBoss.filter(pr => !pr.destruir && pr.y > -50 && pr.y < canvas.height + 50);
             }
 
-            // Desvanecimiento de plataformas
             nivel.plataformas.forEach(p => {
-                if (p.alphaVisibilidad > 0) {
-                    p.alphaVisibilidad -= 0.025; 
-                    if (p.alphaVisibilidad < 0) p.alphaVisibilidad = 0;
+                if (nivelActual !== 7) {
+                    if (p.alphaVisibilidad > 0) {
+                        p.alphaVisibilidad -= 0.02; 
+                        if (p.alphaVisibilidad < 0) p.alphaVisibilidad = 0;
+                    }
+                } else {
+                    p.alphaVisibilidad = 1.0;
                 }
             });
 
-            // Colisiones completas (Piso, Techo y Laterales)
+            if (nivelActual !== 7 || !boss.derrotado) {
+                if (nivel.cristal.alphaVisibilidad > 0) {
+                    nivel.cristal.alphaVisibilidad -= 0.02;
+                    if (nivel.cristal.alphaVisibilidad < 0) nivel.cristal.alphaVisibilidad = 0;
+                }
+            } else {
+                nivel.cristal.alphaVisibilidad = 1.0;
+            }
+
             nivel.plataformas.forEach(p => {
                 let enRangoX = player.x + player.radius > p.x && player.x - player.radius < p.x + p.w;
 
-                // 1. Colisión por arriba
                 if (
                     enRangoX &&
                     player.y + player.radius >= p.y &&
@@ -398,7 +679,6 @@
                     }
                 }
 
-                // 2. Colisión por abajo
                 if (
                     enRangoX &&
                     player.y - player.radius <= p.y + p.h &&
@@ -409,7 +689,6 @@
                     player.vy = 0;
                 }
 
-                // 3. Colisiones laterales
                 if (player.y + player.radius > p.y && player.y - player.radius < p.y + p.h) {
                     if (player.x + player.radius > p.x && player.x < p.x) {
                         player.x = p.x - player.radius;
@@ -420,51 +699,33 @@
                 }
             });
 
-            // Suelo base dinámico para nivel 1
             if (nivelActual === 1 && player.y > canvas.height - 20) {
                 player.y = canvas.height - 20;
                 player.vy = 0;
                 if (keys["KeyW"] || keys["ArrowUp"]) player.vy = -10;
             }
 
-            // Actualizar ondas de sonido
+            let cx = nivel.cristal.x + nivel.cristal.w / 2;
+            let cy = nivel.cristal.y + nivel.cristal.h / 2;
+
             ondas.forEach(o => {
                 o.radioActual += 4.5;
                 o.alpha = 1 - (o.radioActual / o.radioMax);
 
                 nivel.plataformas.forEach(p => {
-                    let dist = Math.hypot(player.x - (p.x + p.w/2), player.y - (p.y + p.h/2));
-                    if (Math.abs(o.radioActual - dist) < 45) {
+                    let distP = Math.hypot(o.x - (p.x + p.w/2), o.y - (p.y + p.h/2));
+                    if (Math.abs(o.radioActual - distP) < 50) {
                         p.alphaVisibilidad = 1.0; 
                     }
                 });
 
-                // Impacto de ondas contra el Boss
-                if (nivelActual === 7 && !boss.derrotado && boss.invulnerableCooldown === 0) {
-                    let distBoss = Math.hypot(o.x - boss.x, o.y - boss.y);
-                    if (Math.abs(o.radioActual - distBoss) < boss.radius) {
-                        boss.vida--;
-                        boss.invulnerableCooldown = 20;
-
-                        for (let i = 0; i < 8; i++) {
-                            particulasBoss.push({
-                                x: boss.x,
-                                y: boss.y,
-                                vx: (Math.random() - 0.5) * 6,
-                                vy: (Math.random() - 0.5) * 6,
-                                alpha: 1.0
-                            });
-                        }
-
-                        if (boss.vida <= 0) {
-                            boss.derrotado = true;
-                        }
-                    }
+                let distC = Math.hypot(o.x - cx, o.y - cy);
+                if (Math.abs(o.radioActual - distC) < 55) {
+                    nivel.cristal.alphaVisibilidad = 1.0;
                 }
             });
             ondas = ondas.filter(o => o.radioActual < o.radioMax);
 
-            // Actualizar partículas del Boss
             particulasBoss.forEach(pt => {
                 pt.x += pt.vx;
                 pt.y += pt.vy;
@@ -472,30 +733,23 @@
             });
             particulasBoss = particulasBoss.filter(pt => pt.alpha > 0);
 
-            // Comprobar cristal portal
-            if (nivelActual < 7 || boss.derrotado) {
-                let cx = nivel.cristal.x + nivel.cristal.w / 2;
-                let cy = nivel.cristal.y + nivel.cristal.h / 2;
-                let distCristal = Math.hypot(player.x - cx, player.y - cy);
-                
-                if (distCristal < 28) {
-                    nivel.cristal.activo = true;
-                    esperandoSiguienteNivel = true;
-                }
-
-                if (Math.random() < 0.4) {
-                    particulasCristal.push({
-                        x: cx + (Math.random() - 0.5) * 30,
-                        y: cy + (Math.random() - 0.5) * 40,
-                        vx: (Math.random() - 0.5) * 0.8,
-                        vy: -Math.random() * 1.2 - 0.3,
-                        size: Math.random() * 3 + 1,
-                        alpha: 1.0
-                    });
-                }
+            let distPlayerCristal = Math.hypot(player.x - cx, player.y - cy);
+            if (distPlayerCristal < 50 && (nivelActual < 7 || boss.derrotado)) {
+                nivel.cristal.activo = true;
+                esperandoSiguienteNivel = true;
             }
 
-            // Actualizar partículas cristal
+            if ((nivel.cristal.alphaVisibilidad > 0 || boss.derrotado) && Math.random() < 0.4) {
+                particulasCristal.push({
+                    x: cx + (Math.random() - 0.5) * 30,
+                    y: cy + (Math.random() - 0.5) * 40,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: -Math.random() * 1.2 - 0.3,
+                    size: Math.random() * 3 + 1,
+                    alpha: nivel.cristal.alphaVisibilidad
+                });
+            }
+
             particulasCristal.forEach(pt => {
                 pt.x += pt.vx;
                 pt.y += pt.vy;
@@ -504,26 +758,207 @@
             particulasCristal = particulasCristal.filter(pt => pt.alpha > 0);
         }
 
+        function dibujarBoton(x, y, w, h, texto, colorBase) {
+            let esHover = mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+
+            ctx.save();
+            
+            let grad = ctx.createLinearGradient(x, y, x + w, y + h);
+            if (esHover) {
+                grad.addColorStop(0, colorBase);
+                grad.addColorStop(1, "#ffffff");
+            } else {
+                grad.addColorStop(0, "rgba(15, 23, 42, 0.9)");
+                grad.addColorStop(1, "rgba(30, 41, 59, 0.9)");
+            }
+
+            ctx.shadowColor = colorBase;
+            ctx.shadowBlur = esHover ? 25 : 8;
+
+            let c = 10;
+            ctx.beginPath();
+            ctx.moveTo(x + c, y);
+            ctx.lineTo(x + w - c, y);
+            ctx.lineTo(x + w, y + c);
+            ctx.lineTo(x + w, y + h - c);
+            ctx.lineTo(x + w - c, y + h);
+            ctx.lineTo(x + c, y + h);
+            ctx.lineTo(x, y + h - c);
+            ctx.lineTo(x, y + c);
+            ctx.closePath();
+
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            ctx.strokeStyle = esHover ? "#ffffff" : colorBase;
+            ctx.lineWidth = esHover ? 2.5 : 1.5;
+            ctx.stroke();
+
+            if (esHover) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(x + w / 2 - 20, y + h - 3, 40, 2);
+            }
+
+            ctx.fillStyle = esHover ? "#000000" : "#ffffff";
+            ctx.font = "bold 15px 'Segoe UI', sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(texto, x + w / 2, y + h / 2);
+
+            ctx.restore();
+        }
+
         function dibujar() {
+            ctx.save();
+            
+            if (temblorPantalla > 0) {
+                let offsetX = (Math.random() - 0.5) * temblorPantalla;
+                let offsetY = (Math.random() - 0.5) * temblorPantalla;
+                ctx.translate(offsetX, offsetY);
+            }
+
             ctx.fillStyle = "#020204";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Indicadores
+            estrellasFondo.forEach(st => {
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = Math.max(0.1, Math.min(1, st.alpha));
+                ctx.beginPath();
+                ctx.arc(st.x, st.y, st.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            let gradienteVacio = ctx.createLinearGradient(0, canvas.height - 50, 0, canvas.height);
+            gradienteVacio.addColorStop(0, "rgba(255, 0, 85, 0)");
+            gradienteVacio.addColorStop(1, "rgba(255, 0, 85, 0.4)");
+            ctx.fillStyle = gradienteVacio;
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            particulasVacio.forEach(pt => {
+                ctx.fillStyle = "#ff0055";
+                ctx.globalAlpha = pt.alpha;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            if (estadoJuego === "MENU") {
+                ctx.save();
+                ctx.fillStyle = "#00f0ff";
+                ctx.font = "bold 38px sans-serif";
+                ctx.textAlign = "center";
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = 25;
+                ctx.fillText("ECHOES OF ELYSIUM", canvas.width / 2, 130);
+
+                ctx.font = "14px sans-serif";
+                ctx.fillStyle = "#8892b0";
+                ctx.shadowBlur = 0;
+                ctx.fillText("Navega por la oscuridad usando impulsos de sonido", canvas.width / 2, 170);
+                ctx.restore();
+
+                dibujarBoton(280, 240, 240, 50, "JUGAR", "#00f0ff");
+                dibujarBoton(280, 310, 240, 50, "TUTORIAL Y GUÍA", "#00ff88");
+
+                ctx.restore();
+                return;
+            }
+
+            if (estadoJuego === "TUTORIAL") {
+                ctx.save();
+                ctx.fillStyle = "rgba(10, 10, 20, 0.85)";
+                ctx.strokeStyle = "#00ff88";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(40, 20, 720, 150);
+                ctx.fillRect(40, 20, 720, 150);
+
+                ctx.fillStyle = "#00ff88";
+                ctx.font = "bold 16px sans-serif";
+                ctx.fillText("GUÍA DE CONTROLES Y MECÁNICAS", 60, 45);
+
+                ctx.font = "14px sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText("• Movimiento:  [A] / [D]  o  [Flechas Izq / Der]", 60, 75);
+                ctx.fillText("• Saltar:  [W]  o  [Flecha Arriba]", 60, 100);
+                ctx.fillText("• Ecolocación (Niveles 1-6):  [ESPACIO] / [Clic] revela plataformas ocultas y el portal.", 60, 125);
+                ctx.fillText("• Parry & Devolver (Nivel 7):  [ESPACIO] / [Clic] cerca de las esferas para devolverlas al Boss.", 60, 150);
+                ctx.restore();
+
+                ctx.fillStyle = "#00ff88";
+                ctx.shadowColor = "#00ff88";
+                ctx.shadowBlur = 15;
+                ctx.fillRect(150, 380, 500, 24);
+                ctx.shadowBlur = 0;
+
+                ctx.save();
+                ctx.fillStyle = "#00ff88";
+                ctx.shadowColor = "#00ff88";
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(dronTutorial.x, dronTutorial.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("DRON PRÁCTICA", dronTutorial.x, dronTutorial.y - 28);
+                ctx.restore();
+
+                proyectilesTutorial.forEach(pr => {
+                    ctx.save();
+                    ctx.fillStyle = pr.devuelto ? "#00f0ff" : (pr.esRojo ? "#ff0033" : "#ffcc00");
+                    ctx.shadowColor = ctx.fillStyle;
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#00ff88";
+                ctx.shadowBlur = 12;
+                ctx.fill();
+
+                ctx.strokeStyle = "#00f0ff";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y - player.radius);
+                ctx.lineTo(player.x, player.y - player.radius - 8);
+                ctx.stroke();
+
+                let brilloRadar = Math.sin(contadorFrames * 0.15) * 3 + 4;
+                ctx.fillStyle = "#00f0ff";
+                ctx.beginPath();
+                ctx.arc(player.x, player.y - player.radius - 8, brilloRadar, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+
+                dibujarBoton(50, 440, 150, 40, "VOLVER AL MENÚ", "#ff0055");
+                dibujarBoton(590, 440, 160, 40, "COMENZAR AVENTURA", "#00ff88");
+
+                ctx.restore();
+                return;
+            }
+
             ctx.fillStyle = "#8892b0";
             ctx.font = "14px sans-serif";
             ctx.textAlign = "left";
-            ctx.fillText(nivelActual === 7 ? "NIVEL: 7 / 7 (BOSS FINAL)" : `NIVEL: ${nivelActual} / 7`, 25, 30);
+            ctx.fillText(nivelActual === 7 ? `NIVEL: 7 / 7 (FASE ${boss.fase} / 4)` : `NIVEL: ${nivelActual} / 7`, 25, 30);
             
-            // Mostrar vidas
             ctx.fillStyle = "#ff4444";
             ctx.fillText(`VIDAS: ${"❤️ ".repeat(Math.max(0, vidas))}`, 200, 30);
             
-            // Mostrar ecos
-            ctx.fillStyle = ondasRestantes > 0 ? "#00f0ff" : "#ff0055";
-            ctx.textAlign = "right";
-            ctx.fillText(nivelActual === 7 ? "ECOS: INFINITOS" : `ECOS RESTANTES: ${ondasRestantes} / 3`, canvas.width - 25, 30);
+            if (nivelActual !== 7) {
+                ctx.fillStyle = ondasRestantes > 0 ? "#00f0ff" : "#ff0055";
+                ctx.textAlign = "right";
+                ctx.fillText(`ECOS RESTANTES: ${ondasRestantes} / 3`, canvas.width - 25, 30);
+            }
 
-            // Pantalla Game Over
             if (gameOver) {
                 ctx.fillStyle = "#ff0055";
                 ctx.font = "30px sans-serif";
@@ -532,37 +967,40 @@
                 ctx.font = "16px sans-serif";
                 ctx.fillStyle = "#8892b0";
                 ctx.fillText("Te has quedado sin vidas. Haz clic o presiona ESPACIO para reiniciar", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.restore();
                 return;
             }
 
-            // Pantalla Final de Victoria
             if (juegoTerminado) {
                 ctx.fillStyle = "#ffd700";
                 ctx.font = "26px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("¡HAS DERROTADO AL NÚCLEO Y SALVADO ELYSIUM!", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillText("¡VICTORIA TOTAL! SALVASTE ELYSIUM", canvas.width / 2, canvas.height / 2 - 20);
                 ctx.font = "16px sans-serif";
                 ctx.fillStyle = "#00f0ff";
-                ctx.fillText("Eres el verdadero maestro de los ecos.", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText("¡Superaste las 4 Fases y destruiste el Núcleo!", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.restore();
                 return;
             }
 
-            // Dibujar plataformas
             nivel.plataformas.forEach(p => {
-                let visible = p.alphaVisibilidad > 0 || nivel.cristal.activo || (nivelActual === 7 && boss.derrotado);
+                let visible = p.alphaVisibilidad > 0 || nivelActual === 7;
 
-                if (visible || nivel.cristal.activo) {
+                if (visible) {
+                    ctx.save();
                     ctx.fillStyle = nivel.color;
                     ctx.shadowColor = nivel.color;
                     ctx.shadowBlur = 15;
-                    ctx.globalAlpha = nivel.cristal.activo ? 1.0 : Math.max(0.15, p.alphaVisibilidad);
-                    ctx.fillRect(p.x, p.y, p.w, p.h);
-                    ctx.globalAlpha = 1.0;
-                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = (nivelActual === 7) ? 1.0 : Math.max(0.1, p.alphaVisibilidad);
+                    
+                    let scaleH = p.h * Math.max(0.5, p.alphaVisibilidad);
+                    let offsetY = (p.h - scaleH) / 2;
+
+                    ctx.fillRect(p.x, p.y + offsetY, p.w, scaleH);
+                    ctx.restore();
                 }
             });
 
-            // Dibujar láseres
             nivel.laseres.forEach(l => {
                 let ciclo = Math.floor(contadorFrames / l.intervalo) % 2;
                 let estaActivo = (ciclo === 0);
@@ -577,77 +1015,141 @@
                     ctx.moveTo(l.x1, l.y1);
                     ctx.lineTo(l.x2, l.y2);
                     ctx.stroke();
-
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.shadowBlur = 6;
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    ctx.moveTo(l.x1, l.y1);
-                    ctx.lineTo(l.x2, l.y2);
-                    ctx.stroke();
-                } else {
-                    ctx.strokeStyle = "rgba(255, 0, 85, 0.25)";
-                    ctx.lineWidth = 1.5;
-                    ctx.setLineDash([4, 4]);
-                    ctx.beginPath();
-                    ctx.moveTo(l.x1, l.y1);
-                    ctx.lineTo(l.x2, l.y2);
-                    ctx.stroke();
                 }
                 ctx.restore();
             });
 
-            // Boss Final
-            if (nivelActual === 7 && !boss.derrotado) {
+            particulasHumo.forEach(ph => {
                 ctx.save();
-                ctx.fillStyle = boss.invulnerableCooldown > 0 ? "#ffffff" : "#ff0055";
-                ctx.shadowColor = "#ff0055";
-                ctx.shadowBlur = 30;
+                ctx.globalAlpha = Math.max(0, ph.alpha);
+                ctx.fillStyle = ph.color + ph.alpha + ")";
+                ctx.beginPath();
+                ctx.arc(ph.x, ph.y, ph.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
 
+            rayosCaoticos.forEach(ry => {
+                ctx.save();
+                if (ry.advertencia > 0) {
+                    ctx.strokeStyle = "rgba(255, 0, 85, 0.4)";
+                    ctx.setLineDash([6, 6]);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(ry.x, 0);
+                    ctx.lineTo(ry.x, canvas.height);
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = "#ff0055";
+                    ctx.shadowColor = "#ff0055";
+                    ctx.shadowBlur = 25;
+                    ctx.fillRect(ry.x - ry.ancho / 2, 0, ry.ancho, canvas.height);
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(ry.x - 2, 0, 4, canvas.height);
+                }
+                ctx.restore();
+            });
+
+            if (nivelActual === 7 && !boss.derrotado) {
+                let pctVida = boss.vida / boss.vidaMax;
+                let colorBoss = boss.fase === 4 ? "#ff0000" : (boss.fase === 3 ? "#ff3300" : (boss.fase === 2 ? "#ff5500" : "#ff0055"));
+
+                ctx.save();
+                ctx.fillStyle = colorBoss;
+                ctx.shadowColor = colorBoss;
+                ctx.shadowBlur = 30 + boss.fase * 10;
                 ctx.beginPath();
                 ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.strokeStyle = "#ff4400";
+                ctx.strokeStyle = boss.fase >= 3 ? "#ffcc00" : "#ffffff";
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.arc(boss.x, boss.y, boss.radius + 10 + Math.sin(contadorFrames * 0.1) * 4, 0, Math.PI * 2);
+                ctx.ellipse(boss.x, boss.y, boss.radius + 14, boss.radius + 5, contadorFrames * (0.04 * boss.fase), 0, Math.PI * 2);
                 ctx.stroke();
+
+                if (boss.fase >= 2) {
+                    ctx.strokeStyle = "#00f0ff";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(boss.x, boss.y, boss.radius + 6, boss.radius + 16, -contadorFrames * 0.06, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(boss.x, boss.y, 8 + Math.sin(contadorFrames * 0.2) * 4, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.restore();
 
-                // Barra de Vida
-                let barW = 200;
-                let barH = 12;
+                if (boss.fase === 4) {
+                    let offsetDronX = Math.sin(contadorFrames * 0.05) * 15;
+                    let dLeftX = boss.x - 70 + offsetDronX;
+                    let dRightX = boss.x + 70 - offsetDronX;
+                    let dY = boss.y + 25;
+
+                    [dLeftX, dRightX].forEach(dx => {
+                        ctx.save();
+                        ctx.fillStyle = "#ffcc00";
+                        ctx.shadowColor = "#ffcc00";
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(dx, dY, 12, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = "#ffffff";
+                        ctx.beginPath();
+                        ctx.arc(dx, dY, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    });
+                }
+
+                proyectilesBoss.forEach(pr => {
+                    ctx.save();
+                    if (!pr.devuelto) {
+                        ctx.fillStyle = pr.esRojo ? "#ff0033" : "#ffcc00";
+                        ctx.shadowColor = pr.esRojo ? "#ff0033" : "#ffcc00";
+                    } else {
+                        ctx.fillStyle = pr.esParry ? "#00f0ff" : "#ffffff";
+                        ctx.shadowColor = pr.esParry ? "#00f0ff" : "#ffffff";
+                    }
+                    ctx.shadowBlur = 18;
+                    ctx.beginPath();
+                    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (pr.esRojo && !pr.devuelto) {
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(pr.x, pr.y, pr.radius + 4, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                });
+
+                let barW = 240;
+                let barH = 14;
                 let barX = canvas.width / 2 - barW / 2;
-                let barY = 50;
+                let barY = 55;
 
                 ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
                 ctx.fillRect(barX, barY, barW, barH);
-
-                let pct = Math.max(0, boss.vida / boss.vidaMax);
-                ctx.fillStyle = "#ff0055";
-                ctx.fillRect(barX, barY, barW * pct, barH);
+                ctx.fillStyle = colorBoss;
+                ctx.fillRect(barX, barY, barW * pctVida, barH);
                 ctx.strokeStyle = "#ffffff";
                 ctx.strokeRect(barX, barY, barW, barH);
 
                 ctx.fillStyle = "#ffffff";
                 ctx.font = "12px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("NÚCLEO ELYSIUM", canvas.width / 2, barY - 5);
-
-                proyectilesBoss.forEach(pr => {
-                    ctx.fillStyle = "#ffaa00";
-                    ctx.shadowColor = "#ffaa00";
-                    ctx.shadowBlur = 12;
-                    ctx.beginPath();
-                    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-                });
+                ctx.fillText(`NÚCLEO ELYSIUM - FASE ${boss.fase} / 4 (${boss.vida} / ${boss.vidaMax} HP)`, canvas.width / 2, barY - 6);
             }
 
             particulasBoss.forEach(pt => {
-                ctx.fillStyle = "#ff0055";
+                ctx.fillStyle = pt.color || "#ff0055";
                 ctx.globalAlpha = pt.alpha;
                 ctx.beginPath();
                 ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
@@ -655,30 +1157,18 @@
                 ctx.globalAlpha = 1.0;
             });
 
-            // Dibujar Portal / Cristal
             if (nivelActual < 7 || boss.derrotado) {
                 let cx = nivel.cristal.x + nivel.cristal.w / 2;
                 let cy = nivel.cristal.y + nivel.cristal.h / 2;
-                let distCristal = Math.hypot(player.x - cx, player.y - cy);
-                let cristalVisible = nivel.cristal.activo || (nivelActual === 7 && boss.derrotado);
-                
-                ondas.forEach(o => {
-                    if (Math.abs(o.radioActual - distCristal) < 70) cristalVisible = true;
-                });
+                let visibilidadPortal = nivel.cristal.activo ? 1.0 : nivel.cristal.alphaVisibilidad;
 
-                if (cristalVisible || nivel.cristal.activo) {
+                if (visibilidadPortal > 0 || (nivelActual === 7 && boss.derrotado)) {
+                    let alphaFinal = (nivelActual === 7 && boss.derrotado) ? 1.0 : Math.max(0.1, visibilidadPortal);
                     let colorPrincipal = nivel.cristal.activo ? "#00ff88" : nivel.color;
-                    
-                    particulasCristal.forEach(pt => {
-                        ctx.fillStyle = colorPrincipal;
-                        ctx.globalAlpha = pt.alpha;
-                        ctx.beginPath();
-                        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.globalAlpha = 1.0;
-                    });
 
                     ctx.save();
+                    ctx.globalAlpha = alphaFinal;
+
                     let flotacion = Math.sin(contadorFrames * 0.05) * 4;
                     ctx.translate(cx, cy + flotacion);
 
@@ -692,10 +1182,6 @@
                     ctx.ellipse(0, 0, 24, 8, angulo, 0, Math.PI * 2);
                     ctx.stroke();
 
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, 20, 6, -angulo * 1.5, 0, Math.PI * 2);
-                    ctx.stroke();
-
                     ctx.fillStyle = nivel.cristal.activo ? "#ffffff" : colorPrincipal;
                     ctx.shadowBlur = 25;
                     ctx.beginPath();
@@ -706,20 +1192,10 @@
                     ctx.closePath();
                     ctx.fill();
 
-                    ctx.fillStyle = "#ffffff";
-                    ctx.beginPath();
-                    ctx.moveTo(0, -12);
-                    ctx.lineTo(6, 0);
-                    ctx.lineTo(0, 12);
-                    ctx.lineTo(-6, 0);
-                    ctx.closePath();
-                    ctx.fill();
-
                     ctx.restore();
                 }
             }
 
-            // Dibujar ondas de eco
             ondas.forEach(o => {
                 ctx.beginPath();
                 ctx.arc(o.x, o.y, o.radioActual, 0, Math.PI * 2);
@@ -730,7 +1206,7 @@
                 ctx.globalAlpha = 1.0;
             });
 
-            // Dibujar a Aria
+            ctx.save();
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
             ctx.fillStyle = "#ffffff";
@@ -739,16 +1215,39 @@
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            // Mensaje de nivel completado
+            ctx.strokeStyle = "#00f0ff";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y - player.radius);
+            ctx.lineTo(player.x, player.y - player.radius - 8);
+            ctx.stroke();
+
+            let brilloRadar = Math.sin(contadorFrames * 0.15) * 3 + 4;
+            ctx.fillStyle = "#00f0ff";
+            ctx.shadowColor = "#00f0ff";
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y - player.radius - 8, brilloRadar, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
             if (esperandoSiguienteNivel) {
+                ctx.save();
+                ctx.fillStyle = "rgba(5, 5, 12, 0.75)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
                 ctx.fillStyle = "#00ff88";
-                ctx.font = "20px sans-serif";
+                ctx.font = "bold 24px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("¡PORTAL SINTONIZADO!", canvas.width / 2, canvas.height / 2 - 20);
-                ctx.font = "14px sans-serif";
-                ctx.fillStyle = "#00f0ff";
-                ctx.fillText("Haz clic o presiona ESPACIO para avanzar al siguiente sector", canvas.width / 2, canvas.height / 2 + 15);
+                ctx.shadowColor = "#00ff88";
+                ctx.shadowBlur = 15;
+                ctx.fillText("¡PORTAL SINTONIZADO!", canvas.width / 2, canvas.height / 2 - 30);
+
+                dibujarBoton(260, canvas.height / 2, 280, 50, "AVANZAR AL SIGUIENTE NIVEL", "#00ff88");
+                ctx.restore();
             }
+
+            ctx.restore();
         }
 
         function loop() {
