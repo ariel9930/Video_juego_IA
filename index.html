@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echoes of Elysium - Láseres Equilibrados</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050508;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            color: #00f0ff;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+        }
+        p {
+            margin: 0 0 10px 0;
+            font-size: 0.9rem;
+            color: #8892b0;
+        }
+        canvas {
+            background-color: #020204;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+            border: 1px solid #1a1a2e;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ECHOES OF ELYSIUM</h1>
+    <p>Usa <b>A / D</b> para moverte, <b>W</b> para saltar y <b>Espacio/Clic</b> para lanzar tus ecos. ¡Velocidad de láseres ajustada!</p>
+    
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Estado del Jugador
+        let player = {
+            x: 100,
+            y: 400,
+            radius: 12,
+            speed: 4.5,
+            vx: 0,
+            vy: 0
+        };
+
+        let nivelActual = 1;
+        let juegoTerminado = false;
+        let gameOver = false;
+        let esperandoSiguienteNivel = false;
+        let ondasRestantes = 3;
+        let vidas = 3;
+        let contadorFrames = 0;
+
+        let particulasCristal = [];
+        let particulasBoss = [];
+        let proyectilesBoss = [];
+
+        // Estado del Jefe Final (Nivel 7)
+        let boss = {
+            x: 400,
+            y: 110,
+            radius: 35,
+            vidaMax: 10,
+            vida: 10,
+            invulnerableCooldown: 0,
+            derrotado: false
+        };
+
+        // Controles
+        let keys = {};
+        window.addEventListener("keydown", (e) => keys[e.code] = true);
+        window.addEventListener("keyup", (e) => keys[e.code] = false);
+
+        // Ondas de sonido (Ecolocación / Ataque)
+        let ondas = [];
+
+        function emitirOnda(x, y) {
+            if (esperandoSiguienteNivel || juegoTerminado || gameOver) return;
+            if (ondasRestantes > 0) {
+                ondas.push({ x: x, y: y, radioActual: 5, radioMax: 280, alpha: 1.0 });
+                ondasRestantes--;
+            }
+        }
+
+        function reiniciarJuegoCompleto() {
+            vidas = 3;
+            gameOver = false;
+            juegoTerminado = false;
+            boss.vida = boss.vidaMax;
+            boss.derrotado = false;
+            cargarNivel(1);
+        }
+
+        window.addEventListener("click", () => {
+            if (gameOver) {
+                reiniciarJuegoCompleto();
+            } else if (esperandoSiguienteNivel) {
+                avanzarNivel();
+            } else {
+                emitirOnda(player.x, player.y);
+            }
+        });
+
+        window.addEventListener("keydown", (e) => {
+            if (e.code === "Space") {
+                if (gameOver) {
+                    reiniciarJuegoCompleto();
+                } else if (esperandoSiguienteNivel) {
+                    avanzarNivel();
+                } else {
+                    emitirOnda(player.x, player.y);
+                }
+            }
+        });
+
+        // Definición de los 7 Niveles (Intervalos más altos = Láseres más lentos y justos)
+        const niveles = {
+            1: {
+                color: "#00f0ff",
+                plataformas: [
+                    { x: 50, y: 430, w: 220, h: 20, alphaVisibilidad: 0 },
+                    { x: 230, y: 350, w: 180, h: 20, alphaVisibilidad: 0 },
+                    { x: 380, y: 270, w: 180, h: 20, alphaVisibilidad: 0 },
+                    { x: 280, y: 190, w: 180, h: 20, alphaVisibilidad: 0 },
+                    { x: 420, y: 120, w: 150, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [],
+                cristal: { x: 485, y: 80, w: 24, h: 40, activo: false },
+                spawn: { x: 100, y: 400 }
+            },
+            2: {
+                color: "#00ff88",
+                plataformas: [
+                    { x: 650, y: 430, w: 120, h: 20, alphaVisibilidad: 0 },
+                    { x: 450, y: 360, w: 140, h: 20, alphaVisibilidad: 0 },
+                    { x: 250, y: 290, w: 140, h: 20, alphaVisibilidad: 0 },
+                    { x: 100, y: 210, w: 130, h: 20, alphaVisibilidad: 0 },
+                    { x: 350, y: 140, w: 180, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 200, y1: 320, x2: 500, y2: 320, intervalo: 240 } 
+                ],
+                cristal: { x: 430, y: 100, w: 24, h: 40, activo: false },
+                spawn: { x: 700, y: 400 }
+            },
+            3: {
+                color: "#b000ff",
+                plataformas: [
+                    { x: 50, y: 440, w: 140, h: 20, alphaVisibilidad: 0 },
+                    { x: 240, y: 370, w: 110, h: 20, alphaVisibilidad: 0 },
+                    { x: 400, y: 300, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 600, y: 230, w: 120, h: 20, alphaVisibilidad: 0 },
+                    { x: 380, y: 160, w: 110, h: 20, alphaVisibilidad: 0 },
+                    { x: 150, y: 90,  w: 130, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 150, y1: 340, x2: 450, y2: 340, intervalo: 200 },
+                    { x1: 300, y1: 190, x2: 650, y2: 190, intervalo: 200 }
+                ],
+                cristal: { x: 205, y: 50, w: 24, h: 40, activo: false },
+                spawn: { x: 100, y: 410 }
+            },
+            4: {
+                color: "#ffaa00",
+                plataformas: [
+                    { x: 350, y: 440, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 150, y: 380, w: 110, h: 20, alphaVisibilidad: 0 },
+                    { x: 300, y: 300, w: 90,  h: 20, alphaVisibilidad: 0 },
+                    { x: 500, y: 230, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 300, y: 160, w: 110, h: 20, alphaVisibilidad: 0 },
+                    { x: 100, y: 100, w: 100, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 100, y1: 340, x2: 450, y2: 340, intervalo: 170 },
+                    { x1: 200, y1: 200, x2: 550, y2: 200, intervalo: 170 }
+                ],
+                cristal: { x: 140, y: 60, w: 24, h: 40, activo: false },
+                spawn: { x: 380, y: 410 }
+            },
+            5: {
+                color: "#ff007f",
+                plataformas: [
+                    { x: 50, y: 430, w: 120, h: 20, alphaVisibilidad: 0 },
+                    { x: 220, y: 360, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 380, y: 290, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 550, y: 220, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 350, y: 150, w: 100, h: 20, alphaVisibilidad: 0 },
+                    { x: 180, y: 80,  w: 100, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 180, y1: 320, x2: 500, y2: 320, intervalo: 140 },
+                    { x1: 250, y1: 250, x2: 650, y2: 250, intervalo: 140 },
+                    { x1: 150, y1: 120, x2: 500, y2: 120, intervalo: 140 }
+                ],
+                cristal: { x: 220, y: 40, w: 24, h: 40, activo: false },
+                spawn: { x: 100, y: 400 }
+            },
+            6: {
+                color: "#ffd700",
+                plataformas: [
+                    { x: 640, y: 430, w: 110, h: 20, alphaVisibilidad: 0 },
+                    { x: 490, y: 360, w: 90,  h: 20, alphaVisibilidad: 0 },
+                    { x: 340, y: 290, w: 90,  h: 20, alphaVisibilidad: 0 },
+                    { x: 190, y: 220, w: 90,  h: 20, alphaVisibilidad: 0 },
+                    { x: 340, y: 150, w: 90,  h: 20, alphaVisibilidad: 0 },
+                    { x: 540, y: 90,  w: 100, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 200, y1: 390, x2: 600, y2: 390, intervalo: 110 },
+                    { x1: 150, y1: 250, x2: 600, y2: 250, intervalo: 110 },
+                    { x1: 200, y1: 110, x2: 650, y2: 110, intervalo: 110 }
+                ],
+                cristal: { x: 585, y: 50, w: 24, h: 40, activo: false },
+                spawn: { x: 690, y: 400 }
+            },
+            7: {
+                color: "#ff0000",
+                plataformas: [
+                    { x: 50, y: 430, w: 150, h: 20, alphaVisibilidad: 0 },
+                    { x: 600, y: 430, w: 150, h: 20, alphaVisibilidad: 0 },
+                    { x: 180, y: 320, w: 120, h: 20, alphaVisibilidad: 0 },
+                    { x: 500, y: 320, w: 120, h: 20, alphaVisibilidad: 0 },
+                    { x: 320, y: 220, w: 160, h: 20, alphaVisibilidad: 0 }
+                ],
+                laseres: [
+                    { x1: 50, y1: 370, x2: 750, y2: 370, intervalo: 160 }
+                ],
+                cristal: { x: 388, y: 160, w: 24, h: 40, activo: false },
+                spawn: { x: 100, y: 400 }
+            }
+        };
+
+        let nivel = niveles[nivelActual];
+
+        function cargarNivel(num) {
+            nivelActual = num;
+            if (niveles[nivelActual]) {
+                nivel = niveles[nivelActual];
+                ondasRestantes = (nivelActual === 7) ? 999 : 3; 
+                contadorFrames = 0;
+                particulasCristal = [];
+                proyectilesBoss = [];
+                if (nivelActual === 7) {
+                    boss.vida = boss.vidaMax;
+                    boss.derrotado = false;
+                }
+                reiniciarPosicionJugador();
+            } else {
+                juegoTerminado = true;
+            }
+        }
+
+        function perderVida() {
+            vidas--;
+            if (vidas <= 0) {
+                gameOver = true;
+            } else {
+                reiniciarPosicionJugador();
+            }
+        }
+
+        function reiniciarPosicionJugador() {
+            player.x = nivel.spawn.x;
+            player.y = nivel.spawn.y;
+            player.vx = 0;
+            player.vy = 0;
+            nivel.cristal.activo = false;
+            esperandoSiguienteNivel = false;
+            ondas = [];
+            contadorFrames = 0;
+            if (nivelActual !== 7) ondasRestantes = 3;
+            nivel.plataformas.forEach(p => p.alphaVisibilidad = 0);
+        }
+
+        function avanzarNivel() {
+            if (nivelActual < 7) {
+                cargarNivel(nivelActual + 1);
+            } else {
+                juegoTerminado = true;
+                esperandoSiguienteNivel = false;
+            }
+        }
+
+        function dispararProyectilBoss() {
+            let dx = player.x - boss.x;
+            let dy = player.y - boss.y;
+            let dist = Math.hypot(dx, dy);
+            let speed = 3.5;
+            proyectilesBoss.push({
+                x: boss.x,
+                y: boss.y,
+                vx: (dx / dist) * speed,
+                vy: (dy / dist) * speed,
+                radius: 7
+            });
+        }
+
+        function actualizar() {
+            if (juegoTerminado || esperandoSiguienteNivel || gameOver) return;
+
+            contadorFrames++;
+
+            // Movimiento lateral
+            if (keys["KeyA"] || keys["ArrowLeft"]) player.x -= player.speed;
+            if (keys["KeyD"] || keys["ArrowRight"]) player.x += player.speed;
+
+            // Gravedad
+            player.vy += 0.38;
+            player.y += player.vy;
+
+            // Límites de pantalla horizontal
+            if (player.x < 15) player.x = 15;
+            if (player.x > canvas.width - 15) player.x = canvas.width - 15;
+
+            // Caída al vacío
+            if (player.y > canvas.height + 15) {
+                perderVida();
+                return;
+            }
+
+            // Comprobar colisión con los láseres rítmicos
+            if (contadorFrames > 30) {
+                nivel.laseres.forEach(l => {
+                    let ciclo = Math.floor(contadorFrames / l.intervalo) % 2;
+                    let estaActivo = (ciclo === 0);
+
+                    if (estaActivo) {
+                        if (
+                            player.x > l.x1 && player.x < l.x2 &&
+                            Math.abs(player.y - l.y1) < player.radius + 4
+                        ) {
+                            perderVida();
+                        }
+                    }
+                });
+            }
+
+            // Lógica del Boss en Nivel 7
+            if (nivelActual === 7 && !boss.derrotado) {
+                boss.x = 400 + Math.sin(contadorFrames * 0.03) * 220;
+
+                if (boss.invulnerableCooldown > 0) boss.invulnerableCooldown--;
+
+                if (contadorFrames % 110 === 0) {
+                    dispararProyectilBoss();
+                }
+
+                proyectilesBoss.forEach(pr => {
+                    pr.x += pr.vx;
+                    pr.y += pr.vy;
+
+                    let d = Math.hypot(player.x - pr.x, player.y - pr.y);
+                    if (d < player.radius + pr.radius) {
+                        perderVida();
+                    }
+                });
+                proyectilesBoss = proyectilesBoss.filter(pr => pr.x > 0 && pr.x < canvas.width && pr.y > 0 && pr.y < canvas.height);
+            }
+
+            // Desvanecimiento de plataformas
+            nivel.plataformas.forEach(p => {
+                if (p.alphaVisibilidad > 0) {
+                    p.alphaVisibilidad -= 0.025; 
+                    if (p.alphaVisibilidad < 0) p.alphaVisibilidad = 0;
+                }
+            });
+
+            // Colisiones completas (Piso, Techo y Laterales)
+            nivel.plataformas.forEach(p => {
+                let enRangoX = player.x + player.radius > p.x && player.x - player.radius < p.x + p.w;
+
+                // 1. Colisión por arriba
+                if (
+                    enRangoX &&
+                    player.y + player.radius >= p.y &&
+                    player.y + player.radius <= p.y + p.h / 2 &&
+                    player.vy > 0
+                ) {
+                    player.y = p.y - player.radius;
+                    player.vy = 0;
+                    if (keys["KeyW"] || keys["ArrowUp"]) {
+                        player.vy = -10;
+                    }
+                }
+
+                // 2. Colisión por abajo
+                if (
+                    enRangoX &&
+                    player.y - player.radius <= p.y + p.h &&
+                    player.y - player.radius >= p.y + p.h / 2 &&
+                    player.vy < 0
+                ) {
+                    player.y = p.y + p.h + player.radius;
+                    player.vy = 0;
+                }
+
+                // 3. Colisiones laterales
+                if (player.y + player.radius > p.y && player.y - player.radius < p.y + p.h) {
+                    if (player.x + player.radius > p.x && player.x < p.x) {
+                        player.x = p.x - player.radius;
+                    }
+                    if (player.x - player.radius < p.x + p.w && player.x > p.x + p.w) {
+                        player.x = p.x + p.w + player.radius;
+                    }
+                }
+            });
+
+            // Suelo base dinámico para nivel 1
+            if (nivelActual === 1 && player.y > canvas.height - 20) {
+                player.y = canvas.height - 20;
+                player.vy = 0;
+                if (keys["KeyW"] || keys["ArrowUp"]) player.vy = -10;
+            }
+
+            // Actualizar ondas de sonido
+            ondas.forEach(o => {
+                o.radioActual += 4.5;
+                o.alpha = 1 - (o.radioActual / o.radioMax);
+
+                nivel.plataformas.forEach(p => {
+                    let dist = Math.hypot(player.x - (p.x + p.w/2), player.y - (p.y + p.h/2));
+                    if (Math.abs(o.radioActual - dist) < 45) {
+                        p.alphaVisibilidad = 1.0; 
+                    }
+                });
+
+                // Impacto de ondas contra el Boss
+                if (nivelActual === 7 && !boss.derrotado && boss.invulnerableCooldown === 0) {
+                    let distBoss = Math.hypot(o.x - boss.x, o.y - boss.y);
+                    if (Math.abs(o.radioActual - distBoss) < boss.radius) {
+                        boss.vida--;
+                        boss.invulnerableCooldown = 20;
+
+                        for (let i = 0; i < 8; i++) {
+                            particulasBoss.push({
+                                x: boss.x,
+                                y: boss.y,
+                                vx: (Math.random() - 0.5) * 6,
+                                vy: (Math.random() - 0.5) * 6,
+                                alpha: 1.0
+                            });
+                        }
+
+                        if (boss.vida <= 0) {
+                            boss.derrotado = true;
+                        }
+                    }
+                }
+            });
+            ondas = ondas.filter(o => o.radioActual < o.radioMax);
+
+            // Actualizar partículas del Boss
+            particulasBoss.forEach(pt => {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.alpha -= 0.04;
+            });
+            particulasBoss = particulasBoss.filter(pt => pt.alpha > 0);
+
+            // Comprobar cristal portal
+            if (nivelActual < 7 || boss.derrotado) {
+                let cx = nivel.cristal.x + nivel.cristal.w / 2;
+                let cy = nivel.cristal.y + nivel.cristal.h / 2;
+                let distCristal = Math.hypot(player.x - cx, player.y - cy);
+                
+                if (distCristal < 28) {
+                    nivel.cristal.activo = true;
+                    esperandoSiguienteNivel = true;
+                }
+
+                if (Math.random() < 0.4) {
+                    particulasCristal.push({
+                        x: cx + (Math.random() - 0.5) * 30,
+                        y: cy + (Math.random() - 0.5) * 40,
+                        vx: (Math.random() - 0.5) * 0.8,
+                        vy: -Math.random() * 1.2 - 0.3,
+                        size: Math.random() * 3 + 1,
+                        alpha: 1.0
+                    });
+                }
+            }
+
+            // Actualizar partículas cristal
+            particulasCristal.forEach(pt => {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.alpha -= 0.02;
+            });
+            particulasCristal = particulasCristal.filter(pt => pt.alpha > 0);
+        }
+
+        function dibujar() {
+            ctx.fillStyle = "#020204";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Indicadores
+            ctx.fillStyle = "#8892b0";
+            ctx.font = "14px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText(nivelActual === 7 ? "NIVEL: 7 / 7 (BOSS FINAL)" : `NIVEL: ${nivelActual} / 7`, 25, 30);
+            
+            // Mostrar vidas
+            ctx.fillStyle = "#ff4444";
+            ctx.fillText(`VIDAS: ${"❤️ ".repeat(Math.max(0, vidas))}`, 200, 30);
+            
+            // Mostrar ecos
+            ctx.fillStyle = ondasRestantes > 0 ? "#00f0ff" : "#ff0055";
+            ctx.textAlign = "right";
+            ctx.fillText(nivelActual === 7 ? "ECOS: INFINITOS" : `ECOS RESTANTES: ${ondasRestantes} / 3`, canvas.width - 25, 30);
+
+            // Pantalla Game Over
+            if (gameOver) {
+                ctx.fillStyle = "#ff0055";
+                ctx.font = "30px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("¡GAME OVER!", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = "16px sans-serif";
+                ctx.fillStyle = "#8892b0";
+                ctx.fillText("Te has quedado sin vidas. Haz clic o presiona ESPACIO para reiniciar", canvas.width / 2, canvas.height / 2 + 20);
+                return;
+            }
+
+            // Pantalla Final de Victoria
+            if (juegoTerminado) {
+                ctx.fillStyle = "#ffd700";
+                ctx.font = "26px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("¡HAS DERROTADO AL NÚCLEO Y SALVADO ELYSIUM!", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = "16px sans-serif";
+                ctx.fillStyle = "#00f0ff";
+                ctx.fillText("Eres el verdadero maestro de los ecos.", canvas.width / 2, canvas.height / 2 + 20);
+                return;
+            }
+
+            // Dibujar plataformas
+            nivel.plataformas.forEach(p => {
+                let visible = p.alphaVisibilidad > 0 || nivel.cristal.activo || (nivelActual === 7 && boss.derrotado);
+
+                if (visible || nivel.cristal.activo) {
+                    ctx.fillStyle = nivel.color;
+                    ctx.shadowColor = nivel.color;
+                    ctx.shadowBlur = 15;
+                    ctx.globalAlpha = nivel.cristal.activo ? 1.0 : Math.max(0.15, p.alphaVisibilidad);
+                    ctx.fillRect(p.x, p.y, p.w, p.h);
+                    ctx.globalAlpha = 1.0;
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // Dibujar láseres
+            nivel.laseres.forEach(l => {
+                let ciclo = Math.floor(contadorFrames / l.intervalo) % 2;
+                let estaActivo = (ciclo === 0);
+
+                ctx.save();
+                if (estaActivo) {
+                    ctx.strokeStyle = "#ff0055";
+                    ctx.shadowColor = "#ff0055";
+                    ctx.shadowBlur = 18;
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(l.x1, l.y1);
+                    ctx.lineTo(l.x2, l.y2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.shadowBlur = 6;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(l.x1, l.y1);
+                    ctx.lineTo(l.x2, l.y2);
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = "rgba(255, 0, 85, 0.25)";
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(l.x1, l.y1);
+                    ctx.lineTo(l.x2, l.y2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            });
+
+            // Boss Final
+            if (nivelActual === 7 && !boss.derrotado) {
+                ctx.save();
+                ctx.fillStyle = boss.invulnerableCooldown > 0 ? "#ffffff" : "#ff0055";
+                ctx.shadowColor = "#ff0055";
+                ctx.shadowBlur = 30;
+
+                ctx.beginPath();
+                ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = "#ff4400";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(boss.x, boss.y, boss.radius + 10 + Math.sin(contadorFrames * 0.1) * 4, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+
+                // Barra de Vida
+                let barW = 200;
+                let barH = 12;
+                let barX = canvas.width / 2 - barW / 2;
+                let barY = 50;
+
+                ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                ctx.fillRect(barX, barY, barW, barH);
+
+                let pct = Math.max(0, boss.vida / boss.vidaMax);
+                ctx.fillStyle = "#ff0055";
+                ctx.fillRect(barX, barY, barW * pct, barH);
+                ctx.strokeStyle = "#ffffff";
+                ctx.strokeRect(barX, barY, barW, barH);
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("NÚCLEO ELYSIUM", canvas.width / 2, barY - 5);
+
+                proyectilesBoss.forEach(pr => {
+                    ctx.fillStyle = "#ffaa00";
+                    ctx.shadowColor = "#ffaa00";
+                    ctx.shadowBlur = 12;
+                    ctx.beginPath();
+                    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+            }
+
+            particulasBoss.forEach(pt => {
+                ctx.fillStyle = "#ff0055";
+                ctx.globalAlpha = pt.alpha;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Dibujar Portal / Cristal
+            if (nivelActual < 7 || boss.derrotado) {
+                let cx = nivel.cristal.x + nivel.cristal.w / 2;
+                let cy = nivel.cristal.y + nivel.cristal.h / 2;
+                let distCristal = Math.hypot(player.x - cx, player.y - cy);
+                let cristalVisible = nivel.cristal.activo || (nivelActual === 7 && boss.derrotado);
+                
+                ondas.forEach(o => {
+                    if (Math.abs(o.radioActual - distCristal) < 70) cristalVisible = true;
+                });
+
+                if (cristalVisible || nivel.cristal.activo) {
+                    let colorPrincipal = nivel.cristal.activo ? "#00ff88" : nivel.color;
+                    
+                    particulasCristal.forEach(pt => {
+                        ctx.fillStyle = colorPrincipal;
+                        ctx.globalAlpha = pt.alpha;
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    });
+
+                    ctx.save();
+                    let flotacion = Math.sin(contadorFrames * 0.05) * 4;
+                    ctx.translate(cx, cy + flotacion);
+
+                    let angulo = contadorFrames * 0.03;
+                    ctx.strokeStyle = colorPrincipal;
+                    ctx.lineWidth = 1.5;
+                    ctx.shadowColor = colorPrincipal;
+                    ctx.shadowBlur = 15;
+
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 24, 8, angulo, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 20, 6, -angulo * 1.5, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = nivel.cristal.activo ? "#ffffff" : colorPrincipal;
+                    ctx.shadowBlur = 25;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -22);
+                    ctx.lineTo(12, 0);
+                    ctx.lineTo(0, 22);
+                    ctx.lineTo(-12, 0);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath();
+                    ctx.moveTo(0, -12);
+                    ctx.lineTo(6, 0);
+                    ctx.lineTo(0, 12);
+                    ctx.lineTo(-6, 0);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+
+            // Dibujar ondas de eco
+            ondas.forEach(o => {
+                ctx.beginPath();
+                ctx.arc(o.x, o.y, o.radioActual, 0, Math.PI * 2);
+                ctx.strokeStyle = nivel.color;
+                ctx.globalAlpha = o.alpha * 0.5;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Dibujar a Aria
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = nivel.color;
+            ctx.shadowBlur = 12;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Mensaje de nivel completado
+            if (esperandoSiguienteNivel) {
+                ctx.fillStyle = "#00ff88";
+                ctx.font = "20px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("¡PORTAL SINTONIZADO!", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = "14px sans-serif";
+                ctx.fillStyle = "#00f0ff";
+                ctx.fillText("Haz clic o presiona ESPACIO para avanzar al siguiente sector", canvas.width / 2, canvas.height / 2 + 15);
+            }
+        }
+
+        function loop() {
+            actualizar();
+            dibujar();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
