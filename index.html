@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Echoes of Elysium - Boss Parry Auto-guiado</title>
+    <title>Echoes of Elysium - Boss, Animaciones & Sonido</title>
     <style>
         body {
             margin: 0;
@@ -16,6 +16,7 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
+            user-select: none;
         }
         h1 {
             margin: 5px 0;
@@ -29,26 +30,272 @@
             font-size: 0.9rem;
             color: #8892b0;
         }
+        #gameContainer {
+            position: relative;
+        }
+        #btnPantalla {
+            position: fixed;
+            top: 8px;
+            left: 10px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            color: #00f0ff;
+            border: 1px solid #00f0ff;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        #btnPantalla:hover { background: #00f0ff; color: #000; }
         canvas {
             background-color: #020204;
             box-shadow: 0 0 35px rgba(0, 240, 255, 0.25);
             border: 1px solid #1a1a2e;
             border-radius: 8px;
             cursor: pointer;
+            display: block;
         }
     </style>
 </head>
 <body>
 
-    <h1>ECHOES OF ELYSIUM</h1>
-    <p>Un viaje cibernético de ecolocación y precisión</p>
+    <div id="cabecera" style="text-align:center"><h1>ECHOES OF ELYSIUM</h1>
+    <p>Ecolocación, Precisión & Animaciones Cibernéticas</p></div>
     
-    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <button id="btnPantalla" tabindex="-1" onmousedown="event.preventDefault()">⛶ PANTALLA COMPLETA [F]</button>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+    </div>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
+        // --- PANTALLA: resoluci\u00f3n l\u00f3gica fija 800x500, escalada para ocupar la ventana ---
+        const LW = 800;
+        const LH = 500;
+        let escalaRender = 1;
+
+        function ajustarPantalla() {
+            let cab = document.getElementById("cabecera");
+            let completa = !!document.fullscreenElement;
+            let altoCab = (!completa && cab && cab.offsetHeight) || 0;
+            let ancho = window.innerWidth - (completa ? 0 : 16);
+            let alto = window.innerHeight - altoCab - (completa ? 0 : 16);
+            let esc = Math.max(0.5, Math.min(ancho / LW, alto / LH));
+            canvas.style.width = Math.floor(LW * esc) + "px";
+            canvas.style.height = Math.floor(LH * esc) + "px";
+            escalaRender = Math.min(2, Math.max(1, esc * (window.devicePixelRatio || 1)));
+            canvas.width = Math.round(LW * escalaRender);
+            canvas.height = Math.round(LH * escalaRender);
+        }
+
+        function alternarPantallaCompleta() {
+            try {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    let pr = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+                    if (pr && pr.catch) pr.catch(() => {});
+                }
+            } catch (err) {}
+        }
+
+        function alCambiarPantallaCompleta() {
+            let completa = !!document.fullscreenElement;
+            let cab = document.getElementById("cabecera");
+            let btn = document.getElementById("btnPantalla");
+            if (cab) cab.style.display = completa ? "none" : "";
+            if (btn) btn.style.display = completa ? "none" : "";
+            ajustarPantalla();
+        }
+
+        window.addEventListener("resize", ajustarPantalla);
+        document.addEventListener("fullscreenchange", alCambiarPantallaCompleta);
+        document.getElementById("btnPantalla").addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            alternarPantallaCompleta();
+        });
+        ajustarPantalla();
+
+        // --- SISTEMA DE AUDIO (Web Audio API) ---
+        let audioCtx = null;
+        let audioMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSound(type) {
+            if (audioMuted || !audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                if (type === 'jump') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.exponentialRampToValueAtTime(450, now + 0.15);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                } else if (type === 'echo') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.25);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'parry') {
+                    let osc1 = audioCtx.createOscillator();
+                    let osc2 = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc1.type = 'sine';
+                    osc2.type = 'square';
+                    osc1.frequency.setValueAtTime(800, now);
+                    osc1.frequency.exponentialRampToValueAtTime(1600, now + 0.2);
+                    osc2.frequency.setValueAtTime(400, now);
+                    osc2.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                    osc1.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc1.start(now);
+                    osc2.start(now);
+                    osc1.stop(now + 0.2);
+                    osc2.stop(now + 0.2);
+                } else if (type === 'hit') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(40, now + 0.3);
+                    gain.gain.setValueAtTime(0.35, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else if (type === 'shoot') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'explosion') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(120, now);
+                    osc.frequency.exponentialRampToValueAtTime(20, now + 0.4);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                } else if (type === 'portal') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else if (type === 'button') {
+                    let osc = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(500, now);
+                    osc.frequency.linearRampToValueAtTime(700, now + 0.05);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.05);
+                } else if (type === 'djump') {
+                    let osc = audioCtx.createOscillator();
+                    let osc2 = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(380, now);
+                    osc.frequency.exponentialRampToValueAtTime(980, now + 0.18);
+                    osc2.type = 'triangle';
+                    osc2.frequency.setValueAtTime(760, now);
+                    osc2.frequency.exponentialRampToValueAtTime(1500, now + 0.18);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                    osc.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc2.start(now);
+                    osc.stop(now + 0.2);
+                    osc2.stop(now + 0.2);
+                } else if (type === 'ulti') {
+                    let osc = audioCtx.createOscillator();
+                    let osc2 = audioCtx.createOscillator();
+                    let gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(90, now);
+                    osc.frequency.exponentialRampToValueAtTime(1400, now + 0.35);
+                    osc.frequency.exponentialRampToValueAtTime(60, now + 1.0);
+                    osc2.type = 'square';
+                    osc2.frequency.setValueAtTime(45, now);
+                    osc2.frequency.exponentialRampToValueAtTime(25, now + 1.0);
+                    gain.gain.setValueAtTime(0.35, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 1.0);
+                    osc.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc2.start(now);
+                    osc.stop(now + 1.0);
+                    osc2.stop(now + 1.0);
+                } else if (type === 'win') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                        let osc = audioCtx.createOscillator();
+                        let gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+                        gain.gain.linearRampToValueAtTime(0.01, now + idx * 0.1 + 0.4);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.1);
+                        osc.stop(now + idx * 0.1 + 0.4);
+                    });
+                }
+            } catch(e) {}
+        }
+
+        // --- ESTADOS Y VARIABLES PRINCIPALES ---
         let estadoJuego = "MENU";
 
         let player = {
@@ -72,6 +319,17 @@
         let mouseX = 0;
         let mouseY = 0;
 
+        let comboParry = 0;
+        let textosCombo = [];
+        let rastroJugador = [];
+
+        // --- EFECTOS Y ANIMACIONES ---
+        let animPerderVidaTimer = 0;
+        let animRespawnTimer = 0;
+        let animVictoriaTimer = 0;
+        let particulasPerderVida = [];
+        let fuegosArtificiales = [];
+
         let estrellasFondo = [];
         let particulasVacio = [];
         let particulasCristal = [];
@@ -80,8 +338,8 @@
 
         for (let i = 0; i < 70; i++) {
             estrellasFondo.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
+                x: Math.random() * LW,
+                y: Math.random() * LH,
                 radius: Math.random() * 1.5 + 0.5,
                 alpha: Math.random(),
                 velocidadParpadeo: Math.random() * 0.03 + 0.01
@@ -90,8 +348,8 @@
 
         for (let i = 0; i < 40; i++) {
             particulasVacio.push({
-                x: Math.random() * canvas.width,
-                y: canvas.height - Math.random() * 45,
+                x: Math.random() * LW,
+                y: LH - Math.random() * 45,
                 vx: (Math.random() - 0.5) * 1.2,
                 vy: -Math.random() * 0.8 - 0.2,
                 size: Math.random() * 3 + 1,
@@ -106,7 +364,8 @@
             vidaMax: 10,
             vida: 10,
             fase: 1,
-            derrotado: false
+            derrotado: false,
+            animDefeatedTimer: 0
         };
 
         let dronTutorial = {
@@ -118,10 +377,15 @@
         let proyectilesBoss = [];
         let proyectilesTutorial = [];
         let rayosCaoticos = [];
+        let ondas = [];
 
         let keys = {};
         window.addEventListener("keydown", (e) => {
+            initAudio();
             keys[e.code] = true;
+            if (estadoJuego === "MULTI" && mp) multiTecla(e.code);
+            if (!e.repeat) manejarSaltoDoble(e.code);
+            if (e.code === "KeyF" && !e.repeat) alternarPantallaCompleta();
             if (e.code === "Space" || e.code === "Enter") {
                 e.preventDefault();
                 accionarAccion();
@@ -131,13 +395,13 @@
 
         canvas.addEventListener("mousemove", (e) => {
             let rect = canvas.getBoundingClientRect();
-            mouseX = e.clientX - rect.left;
-            mouseY = e.clientY - rect.top;
+            mouseX = (e.clientX - rect.left) * (LW / rect.width);
+            mouseY = (e.clientY - rect.top) * (LH / rect.height);
         });
 
-        let ondas = [];
-
         function accionarAccion() {
+            if (estadoJuego === "MULTI") return;
+            initAudio();
             if (estadoJuego === "MENU") return;
 
             if (estadoJuego === "GAME_OVER") {
@@ -152,23 +416,27 @@
 
             if (estadoJuego === "TUTORIAL") {
                 proyectilesTutorial.forEach(pr => {
-                    if (!pr.devuelto) {
-                        let dist = Math.hypot(player.x - pr.x, player.y - pr.y);
-                        if (dist < 85) {
-                            pr.devuelto = true;
-                            temblorPantalla = 5;
-                            pr.vy = -12;
-                        }
-                    }
-                });
-            } else if (nivelActual === 7 && !boss.derrotado) {
-                proyectilesBoss.forEach(pr => {
-                    if (!pr.devuelto) {
+                    if (!pr.devuelto && pr.esRojo) {
                         let dist = Math.hypot(player.x - pr.x, player.y - pr.y);
                         if (dist < 85) {
                             pr.devuelto = true;
                             temblorPantalla = 6;
-                            
+                            pr.vy = -12;
+                            playSound('parry');
+                        }
+                    }
+                });
+            } else if (nivelActual === 7 && !boss.derrotado && boss.animDefeatedTimer === 0) {
+                if (ultCarga >= 5 && !ult) { lanzarUlti(); return; }
+                let hizoParry = false;
+                proyectilesBoss.forEach(pr => {
+                    if (!pr.devuelto && pr.esRojo) {
+                        let dist = Math.hypot(player.x - pr.x, player.y - pr.y);
+                        if (dist < 85) {
+                            pr.devuelto = true;
+                            temblorPantalla = 7;
+                            hizoParry = true;
+
                             if (pr.esRojo) {
                                 pr.vy = -14;
                                 pr.esParry = true;
@@ -178,34 +446,68 @@
                         }
                     }
                 });
+
+                if (hizoParry) {
+                    comboParry++;
+                    ultCarga = Math.min(5, ultCarga + 1);
+                    fxAnillo(player.x, player.y, "#00f0ff", 60, 18, false);
+                    playSound('parry');
+                    textosCombo.push({
+                        text: comboParry > 1 ? `PARRY X${comboParry}!` : "PARRY!",
+                        x: player.x,
+                        y: player.y - 20,
+                        alpha: 1.0,
+                        scale: 1.2
+                    });
+                }
             } else {
                 if (ondasRestantes > 0) {
                     ondas.push({ x: player.x, y: player.y, radioActual: 5, radioMax: 280, alpha: 1.0 });
                     ondasRestantes--;
+                    playSound('echo');
                 }
             }
         }
 
         window.addEventListener("click", (e) => {
+            initAudio();
+
+            // Botón de silencio en la esquina superior derecha
+            if (mouseX >= LW - 45 && mouseX <= LW - 15 && mouseY >= 10 && mouseY <= 40) {
+                audioMuted = !audioMuted;
+                return;
+            }
+
             if (estadoJuego === "MENU") {
                 if (mouseX >= 280 && mouseX <= 520 && mouseY >= 240 && mouseY <= 290) {
+                    playSound('button');
                     estadoJuego = "JUEGO";
                     cargarNivel(1);
                     return;
                 }
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 380 && mouseY <= 430) {
+                    playSound('button');
+                    iniciarMulti();
+                    return;
+                }
                 if (mouseX >= 280 && mouseX <= 520 && mouseY >= 310 && mouseY <= 360) {
+                    playSound('button');
                     estadoJuego = "TUTORIAL";
                     proyectilesTutorial = [];
                     player.x = 400;
                     player.y = 350;
                     return;
                 }
+            } else if (estadoJuego === "MULTI") {
+                multiClick();
             } else if (estadoJuego === "TUTORIAL") {
                 if (mouseX >= 50 && mouseX <= 200 && mouseY >= 440 && mouseY <= 480) {
+                    playSound('button');
                     estadoJuego = "MENU";
                     return;
                 }
                 if (mouseX >= 590 && mouseX <= 750 && mouseY >= 440 && mouseY <= 480) {
+                    playSound('button');
                     estadoJuego = "JUEGO";
                     cargarNivel(1);
                     return;
@@ -336,6 +638,7 @@
 
         function cargarNivel(num) {
             nivelActual = num;
+            ultCarga = 0; ult = null; ultFlash = 0;
             if (niveles[nivelActual]) {
                 nivel = niveles[nivelActual];
                 ondasRestantes = (nivelActual === 7) ? 0 : 3; 
@@ -344,25 +647,46 @@
                 proyectilesBoss = [];
                 particulasHumo = [];
                 rayosCaoticos = [];
+                comboParry = 0;
                 temblorPantalla = 0;
                 if (nivelActual === 7) {
                     boss.vidaMax = 10;
                     boss.vida = 10;
                     boss.fase = 1;
                     boss.derrotado = false;
+                    boss.animDefeatedTimer = 0;
                 }
                 reiniciarPosicionJugador();
             } else {
-                juegoTerminado = true;
+                iniciarVictoria();
             }
         }
 
         function perderVida() {
+            if (ult) return; // invulnerable durante la ulti
+            comboParry = 0;
             vidas--;
+            playSound('hit');
+            animPerderVidaTimer = 30; // 30 frames de vignette roja
+
+            // Partículas de explosión del jugador
+            for (let i = 0; i < 40; i++) {
+                particulasPerderVida.push({
+                    x: player.x,
+                    y: player.y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    radius: Math.random() * 4 + 2,
+                    alpha: 1.0,
+                    color: Math.random() < 0.5 ? "#ff0055" : "#ffffff"
+                });
+            }
+
             if (vidas <= 0) {
                 gameOver = true;
             } else {
                 reiniciarPosicionJugador();
+                animRespawnTimer = 40; // Respawn holográfico
             }
         }
 
@@ -390,20 +714,44 @@
             particulasVacio.forEach(pt => {
                 pt.x += pt.vx;
                 pt.y += pt.vy;
-                if (pt.y < canvas.height - 50) {
-                    pt.y = canvas.height - 5;
-                    pt.x = Math.random() * canvas.width;
+                if (pt.y < LH - 50) {
+                    pt.y = LH - 5;
+                    pt.x = Math.random() * LW;
                 }
             });
         }
 
         function avanzarNivel() {
+            playSound('portal');
             if (nivelActual < 7) {
                 cargarNivel(nivelActual + 1);
             } else {
-                juegoTerminado = true;
-                esperandoSiguienteNivel = false;
+                iniciarVictoria();
             }
+        }
+
+        function iniciarVictoria() {
+            juegoTerminado = true;
+            esperandoSiguienteNivel = false;
+            animVictoriaTimer = 0;
+            playSound('win');
+
+            // Fuegos artificiales iniciales
+            for (let i = 0; i < 5; i++) {
+                crearCoheteVictoria();
+            }
+        }
+
+        function crearCoheteVictoria() {
+            let startX = 100 + Math.random() * 600;
+            fuegosArtificiales.push({
+                x: startX,
+                y: LH,
+                vy: -Math.random() * 4 - 8,
+                targetY: 100 + Math.random() * 150,
+                explotado: false,
+                color: ["#00f0ff", "#00ff88", "#ff007f", "#ffd700", "#b000ff"][Math.floor(Math.random() * 5)]
+            });
         }
 
         function actualizar() {
@@ -411,17 +759,93 @@
             if (temblorPantalla > 0) temblorPantalla -= 0.5;
 
             mecerAnimaciones();
+            actualizarFx();
+            if (estadoJuego === "MULTI") { actualizarMulti(); return; }
 
             if (estadoJuego === "MENU") return;
 
+            // ACTUALIZAR ANIMACIÓN DE DERROTA DE BOSS
+            if (boss.animDefeatedTimer > 0) {
+                boss.animDefeatedTimer--;
+                temblorPantalla = 12;
+
+                if (contadorFrames % 6 === 0) {
+                    playSound('explosion');
+                    for (let i = 0; i < 15; i++) {
+                        particulasBoss.push({
+                            x: boss.x + (Math.random() - 0.5) * 80,
+                            y: boss.y + (Math.random() - 0.5) * 80,
+                            vx: (Math.random() - 0.5) * 12,
+                            vy: (Math.random() - 0.5) * 12,
+                            alpha: 1.0,
+                            color: Math.random() < 0.5 ? "#00f0ff" : "#ff0055"
+                        });
+                    }
+                }
+
+                if (boss.animDefeatedTimer === 0) {
+                    boss.derrotado = true;
+                    nivel.cristal.alphaVisibilidad = 1.0;
+                    esperandoSiguienteNivel = true;
+                }
+                return;
+            }
+
+            // ACTUALIZAR VICTORIA Y FUEGOS ARTIFICIALES
+            if (juegoTerminado) {
+                animVictoriaTimer++;
+                if (contadorFrames % 25 === 0) {
+                    crearCoheteVictoria();
+                }
+
+                fuegosArtificiales.forEach(fw => {
+                    if (!fw.explotado) {
+                        fw.y += fw.vy;
+                        if (fw.y <= fw.targetY) {
+                            fw.explotado = true;
+                            playSound('explosion');
+                            for (let i = 0; i < 35; i++) {
+                                let angulo = Math.random() * Math.PI * 2;
+                                let vel = Math.random() * 6 + 2;
+                                particulasBoss.push({
+                                    x: fw.x,
+                                    y: fw.y,
+                                    vx: Math.cos(angulo) * vel,
+                                    vy: Math.sin(angulo) * vel,
+                                    alpha: 1.0,
+                                    color: fw.color
+                                });
+                            }
+                        }
+                    }
+                });
+                fuegosArtificiales = fuegosArtificiales.filter(fw => !fw.explotado);
+
+                particulasBoss.forEach(pt => {
+                    pt.x += pt.vx;
+                    pt.y += pt.vy;
+                    pt.vy += 0.05; // Gravedad suave
+                    pt.alpha -= 0.02;
+                });
+                particulasBoss = particulasBoss.filter(pt => pt.alpha > 0);
+                return;
+            }
+
+            // MODO TUTORIAL
             if (estadoJuego === "TUTORIAL") {
                 if (keys["KeyA"] || keys["ArrowLeft"]) player.x -= player.speed;
                 if (keys["KeyD"] || keys["ArrowRight"]) player.x += player.speed;
+
+                if ((keys["KeyW"] || keys["ArrowUp"]) && player.vy === 0) {
+                    player.vy = -10;
+                    playSound('jump');
+                }
+
                 player.vy += 0.38;
                 player.y += player.vy;
 
                 if (player.x < 15) player.x = 15;
-                if (player.x > canvas.width - 15) player.x = canvas.width - 15;
+                if (player.x > LW - 15) player.x = LW - 15;
 
                 let pTut = { x: 150, y: 380, w: 500, h: 24 };
                 let enRangoXTut = player.x + player.radius > pTut.x && player.x - player.radius < pTut.x + pTut.w;
@@ -434,14 +858,15 @@
                 ) {
                     player.y = pTut.y - player.radius;
                     player.vy = 0;
-                    if (keys["KeyW"] || keys["ArrowUp"]) player.vy = -10;
                 }
 
-                if (player.y > canvas.height + 15) {
+                if (player.y > LH + 15) {
                     player.x = 400;
                     player.y = 350;
                     player.vy = 0;
                 }
+
+                visualTick(player, dirEntrada(), "#00ff88");
 
                 dronTutorial.x += 2.5 * dronTutorial.dir;
                 if (dronTutorial.x > 580) dronTutorial.dir = -1;
@@ -458,11 +883,11 @@
                         esRojo: esRojo,
                         devuelto: false
                     });
+                    playSound('shoot');
                 }
 
                 proyectilesTutorial.forEach(pr => {
                     if (pr.devuelto) {
-                        // Auto-guiado suave hacia el Dron de práctica
                         pr.vx = (dronTutorial.x - pr.x) * 0.14;
                     }
                     pr.x += pr.vx;
@@ -472,26 +897,36 @@
                         if (dDron < 35) {
                             pr.destruir = true;
                             temblorPantalla = 8;
+                            playSound('explosion');
                         }
                     }
                 });
-                proyectilesTutorial = proyectilesTutorial.filter(pr => !pr.destruir && pr.y < canvas.height && pr.y > 0);
+                proyectilesTutorial = proyectilesTutorial.filter(pr => !pr.destruir && pr.y < LH && pr.y > 0);
 
                 return;
             }
 
-            if (juegoTerminado || esperandoSiguienteNivel || gameOver) return;
+            if (esperandoSiguienteNivel || gameOver) return;
 
-            if (keys["KeyA"] || keys["ArrowLeft"]) player.x -= player.speed;
-            if (keys["KeyD"] || keys["ArrowRight"]) player.x += player.speed;
+            // CONTROL DEL JUGADOR
+            let moviendose = false;
+            if (keys["KeyA"] || keys["ArrowLeft"]) { player.x -= player.speed; moviendose = true; }
+            if (keys["KeyD"] || keys["ArrowRight"]) { player.x += player.speed; moviendose = true; }
+
+            if (moviendose && contadorFrames % 3 === 0) {
+                rastroJugador.push({ x: player.x, y: player.y, alpha: 0.6, radius: player.radius });
+            }
+
+            rastroJugador.forEach(rt => rt.alpha -= 0.05);
+            rastroJugador = rastroJugador.filter(rt => rt.alpha > 0);
 
             player.vy += 0.38;
             player.y += player.vy;
 
             if (player.x < 15) player.x = 15;
-            if (player.x > canvas.width - 15) player.x = canvas.width - 15;
+            if (player.x > LW - 15) player.x = LW - 15;
 
-            if (player.y > canvas.height + 15) {
+            if (player.y > LH + 15) {
                 perderVida();
                 return;
             }
@@ -512,7 +947,9 @@
                 });
             }
 
-            if (nivelActual === 7 && !boss.derrotado) {
+            // COMBATE CON BOSS EN NIVEL 7
+            if (nivelActual === 7 && !boss.derrotado && boss.animDefeatedTimer === 0) {
+                actualizarUlti();
                 let pctVida = boss.vida / boss.vidaMax;
 
                 if (pctVida > 0.75) boss.fase = 1;
@@ -583,6 +1020,7 @@
                             esParry: false
                         });
                     });
+                    playSound('shoot');
                 }
 
                 let cadencia = boss.fase === 1 ? 120 : (boss.fase === 2 ? 90 : (boss.fase === 3 ? 70 : 55));
@@ -598,12 +1036,12 @@
                         devuelto: false,
                         esParry: false
                     });
+                    playSound('shoot');
                 }
 
                 proyectilesBoss.forEach(pr => {
-                    // SISTEMA AUTO-GUIADO MAGNÉTICO AL DEVOLVER
                     if (pr.devuelto) {
-                        pr.vx = (boss.x - pr.x) * 0.14; // Persigue al Boss dinámicamente en el aire
+                        pr.vx = (boss.x - pr.x) * 0.14; // Auto-guiado
                     }
 
                     pr.x += pr.vx;
@@ -620,6 +1058,7 @@
                             boss.vida--;
                             pr.destruir = true;
                             temblorPantalla = pr.esParry ? 18 : 10;
+                            playSound('explosion');
 
                             let cantidadParticulas = pr.esParry ? 30 : 15;
                             for (let i = 0; i < cantidadParticulas; i++) {
@@ -634,13 +1073,12 @@
                             }
 
                             if (boss.vida <= 0) {
-                                boss.derrotado = true;
-                                temblorPantalla = 25;
+                                boss.animDefeatedTimer = 180; // 3 segundos de explosión/colapso
                             }
                         }
                     }
                 });
-                proyectilesBoss = proyectilesBoss.filter(pr => !pr.destruir && pr.y > -50 && pr.y < canvas.height + 50);
+                proyectilesBoss = proyectilesBoss.filter(pr => !pr.destruir && pr.y > -50 && pr.y < LH + 50);
             }
 
             nivel.plataformas.forEach(p => {
@@ -663,6 +1101,7 @@
                 nivel.cristal.alphaVisibilidad = 1.0;
             }
 
+            // COLISIÓN PLATAFORMAS
             nivel.plataformas.forEach(p => {
                 let enRangoX = player.x + player.radius > p.x && player.x - player.radius < p.x + p.w;
 
@@ -676,6 +1115,7 @@
                     player.vy = 0;
                     if (keys["KeyW"] || keys["ArrowUp"]) {
                         player.vy = -10;
+                        playSound('jump');
                     }
                 }
 
@@ -699,10 +1139,13 @@
                 }
             });
 
-            if (nivelActual === 1 && player.y > canvas.height - 20) {
-                player.y = canvas.height - 20;
+            if (nivelActual === 1 && player.y > LH - 20) {
+                player.y = LH - 20;
                 player.vy = 0;
-                if (keys["KeyW"] || keys["ArrowUp"]) player.vy = -10;
+                if (keys["KeyW"] || keys["ArrowUp"]) {
+                    player.vy = -10;
+                    playSound('jump');
+                }
             }
 
             let cx = nivel.cristal.x + nivel.cristal.w / 2;
@@ -733,8 +1176,14 @@
             });
             particulasBoss = particulasBoss.filter(pt => pt.alpha > 0);
 
+            visualTick(player, dirEntrada(), nivel.color);
+
+            // ACTIVACIÓN DE PORTAL (CRISTAL)
             let distPlayerCristal = Math.hypot(player.x - cx, player.y - cy);
             if (distPlayerCristal < 50 && (nivelActual < 7 || boss.derrotado)) {
+                if (!nivel.cristal.activo) {
+                    playSound('portal');
+                }
                 nivel.cristal.activo = true;
                 esperandoSiguienteNivel = true;
             }
@@ -756,6 +1205,21 @@
                 pt.alpha -= 0.02;
             });
             particulasCristal = particulasCristal.filter(pt => pt.alpha > 0);
+
+            // TEXTOS FLOTANTES DE COMBO
+            textosCombo.forEach(txt => {
+                txt.y -= 0.8;
+                txt.alpha -= 0.02;
+            });
+            textosCombo = textosCombo.filter(txt => txt.alpha > 0);
+
+            // PARTICULAS DE PERDER VIDA
+            particulasPerderVida.forEach(pt => {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.alpha -= 0.03;
+            });
+            particulasPerderVida = particulasPerderVida.filter(pt => pt.alpha > 0);
         }
 
         function dibujarBoton(x, y, w, h, texto, colorBase) {
@@ -809,6 +1273,7 @@
         }
 
         function dibujar() {
+            ctx.setTransform(escalaRender, 0, 0, escalaRender, 0, 0);
             ctx.save();
             
             if (temblorPantalla > 0) {
@@ -818,7 +1283,8 @@
             }
 
             ctx.fillStyle = "#020204";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, LW, LH);
+            dibujarFondoPro();
 
             estrellasFondo.forEach(st => {
                 ctx.fillStyle = "#ffffff";
@@ -829,11 +1295,11 @@
             });
             ctx.globalAlpha = 1.0;
 
-            let gradienteVacio = ctx.createLinearGradient(0, canvas.height - 50, 0, canvas.height);
+            let gradienteVacio = ctx.createLinearGradient(0, LH - 50, 0, LH);
             gradienteVacio.addColorStop(0, "rgba(255, 0, 85, 0)");
             gradienteVacio.addColorStop(1, "rgba(255, 0, 85, 0.4)");
             ctx.fillStyle = gradienteVacio;
-            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+            ctx.fillRect(0, LH - 50, LW, 50);
 
             particulasVacio.forEach(pt => {
                 ctx.fillStyle = "#ff0055";
@@ -844,6 +1310,16 @@
             });
             ctx.globalAlpha = 1.0;
 
+            if (estadoJuego === "MULTI") { dibujarMulti(); ctx.restore(); return; }
+
+            // BOTÓN SILENCIO DE AUDIO EN LA ESQUINA SUPERIOR DERECHA
+            ctx.save();
+            ctx.fillStyle = audioMuted ? "#ff0055" : "#00f0ff";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText(audioMuted ? "MUTE [x]" : "AUDIO [on]", LW - 15, 25);
+            ctx.restore();
+
             if (estadoJuego === "MENU") {
                 ctx.save();
                 ctx.fillStyle = "#00f0ff";
@@ -851,16 +1327,17 @@
                 ctx.textAlign = "center";
                 ctx.shadowColor = "#00f0ff";
                 ctx.shadowBlur = 25;
-                ctx.fillText("ECHOES OF ELYSIUM", canvas.width / 2, 130);
+                ctx.fillText("ECHOES OF ELYSIUM", LW / 2, 130);
 
                 ctx.font = "14px sans-serif";
                 ctx.fillStyle = "#8892b0";
                 ctx.shadowBlur = 0;
-                ctx.fillText("Navega por la oscuridad usando impulsos de sonido", canvas.width / 2, 170);
+                ctx.fillText("Navega por la oscuridad usando impulsos de sonido", LW / 2, 170);
                 ctx.restore();
 
                 dibujarBoton(280, 240, 240, 50, "JUGAR", "#00f0ff");
                 dibujarBoton(280, 310, 240, 50, "TUTORIAL Y GUÍA", "#00ff88");
+                dibujarBoton(280, 380, 240, 50, "MULTIJUGADOR 2P", "#b000ff");
 
                 ctx.restore();
                 return;
@@ -871,8 +1348,8 @@
                 ctx.fillStyle = "rgba(10, 10, 20, 0.85)";
                 ctx.strokeStyle = "#00ff88";
                 ctx.lineWidth = 1.5;
-                ctx.strokeRect(40, 20, 720, 150);
-                ctx.fillRect(40, 20, 720, 150);
+                ctx.strokeRect(40, 20, 720, 165);
+                ctx.fillRect(40, 20, 720, 165);
 
                 ctx.fillStyle = "#00ff88";
                 ctx.font = "bold 16px sans-serif";
@@ -883,7 +1360,8 @@
                 ctx.fillText("• Movimiento:  [A] / [D]  o  [Flechas Izq / Der]", 60, 75);
                 ctx.fillText("• Saltar:  [W]  o  [Flecha Arriba]", 60, 100);
                 ctx.fillText("• Ecolocación (Niveles 1-6):  [ESPACIO] / [Clic] revela plataformas ocultas y el portal.", 60, 125);
-                ctx.fillText("• Parry & Devolver (Nivel 7):  [ESPACIO] / [Clic] cerca de las esferas para devolverlas al Boss.", 60, 150);
+                ctx.fillText("• Parry (Nivel 7):  [ESPACIO] cerca de esferas ROJAS las devuelve. Las amarillas se esquivan.", 60, 150);
+                ctx.fillText("• ULTI:  junta 5 parrys y pulsa [ESPACIO] para lanzar la ulti Nova Elysium.", 60, 172);
                 ctx.restore();
 
                 ctx.fillStyle = "#00ff88";
@@ -916,27 +1394,8 @@
                     ctx.restore();
                 });
 
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-                ctx.fillStyle = "#ffffff";
-                ctx.shadowColor = "#00ff88";
-                ctx.shadowBlur = 12;
-                ctx.fill();
-
-                ctx.strokeStyle = "#00f0ff";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(player.x, player.y - player.radius);
-                ctx.lineTo(player.x, player.y - player.radius - 8);
-                ctx.stroke();
-
-                let brilloRadar = Math.sin(contadorFrames * 0.15) * 3 + 4;
-                ctx.fillStyle = "#00f0ff";
-                ctx.beginPath();
-                ctx.arc(player.x, player.y - player.radius - 8, brilloRadar, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
+                dibujarFx();
+                dibujarPersonaje(player, "#00ff88", "#00ff88");
 
                 dibujarBoton(50, 440, 150, 40, "VOLVER AL MENÚ", "#ff0055");
                 dibujarBoton(590, 440, 160, 40, "COMENZAR AVENTURA", "#00ff88");
@@ -956,31 +1415,48 @@
             if (nivelActual !== 7) {
                 ctx.fillStyle = ondasRestantes > 0 ? "#00f0ff" : "#ff0055";
                 ctx.textAlign = "right";
-                ctx.fillText(`ECOS RESTANTES: ${ondasRestantes} / 3`, canvas.width - 25, 30);
+                ctx.fillText(`ECOS RESTANTES: ${ondasRestantes} / 3`, LW - 120, 30);
             }
 
             if (gameOver) {
                 ctx.fillStyle = "#ff0055";
                 ctx.font = "30px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("¡GAME OVER!", canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillText("¡GAME OVER!", LW / 2, LH / 2 - 20);
                 ctx.font = "16px sans-serif";
                 ctx.fillStyle = "#8892b0";
-                ctx.fillText("Te has quedado sin vidas. Haz clic o presiona ESPACIO para reiniciar", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText("Te has quedado sin vidas. Haz clic o presiona ESPACIO para reiniciar", LW / 2, LH / 2 + 20);
                 ctx.restore();
                 return;
             }
 
+            // ANIMACIÓN Y PANTALLA DE VICTORIA TOTAL
             if (juegoTerminado) {
+                ctx.save();
                 ctx.fillStyle = "#ffd700";
-                ctx.font = "26px sans-serif";
+                ctx.font = "bold 32px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText("¡VICTORIA TOTAL! SALVASTE ELYSIUM", canvas.width / 2, canvas.height / 2 - 20);
-                ctx.font = "16px sans-serif";
+                ctx.shadowColor = "#ffd700";
+                ctx.shadowBlur = 25;
+                ctx.fillText("¡VICTORIA TOTAL!", LW / 2, LH / 2 - 40);
+
+                ctx.font = "18px sans-serif";
                 ctx.fillStyle = "#00f0ff";
-                ctx.fillText("¡Superaste las 4 Fases y destruiste el Núcleo!", canvas.width / 2, canvas.height / 2 + 20);
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = 15;
+                ctx.fillText("¡Destruiste el Núcleo Elysium!", LW / 2, LH / 2 + 10);
                 ctx.restore();
-                return;
+
+                fuegosArtificiales.forEach(fw => {
+                    ctx.save();
+                    ctx.fillStyle = fw.color;
+                    ctx.shadowColor = fw.color;
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(fw.x, fw.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
             }
 
             nivel.plataformas.forEach(p => {
@@ -1037,53 +1513,66 @@
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(ry.x, 0);
-                    ctx.lineTo(ry.x, canvas.height);
+                    ctx.lineTo(ry.x, LH);
                     ctx.stroke();
                 } else {
                     ctx.fillStyle = "#ff0055";
                     ctx.shadowColor = "#ff0055";
                     ctx.shadowBlur = 25;
-                    ctx.fillRect(ry.x - ry.ancho / 2, 0, ry.ancho, canvas.height);
+                    ctx.fillRect(ry.x - ry.ancho / 2, 0, ry.ancho, LH);
 
                     ctx.fillStyle = "#ffffff";
-                    ctx.fillRect(ry.x - 2, 0, 4, canvas.height);
+                    ctx.fillRect(ry.x - 2, 0, 4, LH);
                 }
                 ctx.restore();
             });
 
-            if (nivelActual === 7 && !boss.derrotado) {
-                let pctVida = boss.vida / boss.vidaMax;
+            // ANIMACIÓN Y DIBUJO DEL BOSS EN NIVEL 7
+            if (nivelActual === 7 && (!boss.derrotado || boss.animDefeatedTimer > 0)) {
+                ctx.save();
+                let pctVida = Math.max(0, boss.vida / boss.vidaMax);
                 let colorBoss = boss.fase === 4 ? "#ff0000" : (boss.fase === 3 ? "#ff3300" : (boss.fase === 2 ? "#ff5500" : "#ff0055"));
 
-                ctx.save();
-                ctx.fillStyle = colorBoss;
-                ctx.shadowColor = colorBoss;
-                ctx.shadowBlur = 30 + boss.fase * 10;
-                ctx.beginPath();
-                ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.strokeStyle = boss.fase >= 3 ? "#ffcc00" : "#ffffff";
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.ellipse(boss.x, boss.y, boss.radius + 14, boss.radius + 5, contadorFrames * (0.04 * boss.fase), 0, Math.PI * 2);
-                ctx.stroke();
-
-                if (boss.fase >= 2) {
-                    ctx.strokeStyle = "#00f0ff";
-                    ctx.lineWidth = 2;
+                // SI ESTÁ EN COLAPSO DE DERROTA
+                if (boss.animDefeatedTimer > 0) {
+                    let osc = Math.sin(boss.animDefeatedTimer * 0.5) * 8;
+                    ctx.translate(boss.x + osc, boss.y);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.shadowColor = "#00f0ff";
+                    ctx.shadowBlur = 40;
                     ctx.beginPath();
-                    ctx.ellipse(boss.x, boss.y, boss.radius + 6, boss.radius + 16, -contadorFrames * 0.06, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
+                    ctx.arc(0, 0, boss.radius + Math.random() * 8, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = colorBoss;
+                    ctx.shadowColor = colorBoss;
+                    ctx.shadowBlur = 30 + boss.fase * 10;
+                    ctx.beginPath();
+                    ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI * 2);
+                    ctx.fill();
 
-                ctx.fillStyle = "#ffffff";
-                ctx.beginPath();
-                ctx.arc(boss.x, boss.y, 8 + Math.sin(contadorFrames * 0.2) * 4, 0, Math.PI * 2);
-                ctx.fill();
+                    ctx.strokeStyle = boss.fase >= 3 ? "#ffcc00" : "#ffffff";
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(boss.x, boss.y, boss.radius + 14, boss.radius + 5, contadorFrames * (0.04 * boss.fase), 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    if (boss.fase >= 2) {
+                        ctx.strokeStyle = "#00f0ff";
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.ellipse(boss.x, boss.y, boss.radius + 6, boss.radius + 16, -contadorFrames * 0.06, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath();
+                    ctx.arc(boss.x, boss.y, 8 + Math.sin(contadorFrames * 0.2) * 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 ctx.restore();
 
-                if (boss.fase === 4) {
+                if (boss.fase === 4 && boss.animDefeatedTimer === 0) {
                     let offsetDronX = Math.sin(contadorFrames * 0.05) * 15;
                     let dLeftX = boss.x - 70 + offsetDronX;
                     let dRightX = boss.x + 70 - offsetDronX;
@@ -1130,22 +1619,24 @@
                     ctx.restore();
                 });
 
-                let barW = 240;
-                let barH = 14;
-                let barX = canvas.width / 2 - barW / 2;
-                let barY = 55;
+                if (boss.animDefeatedTimer === 0) {
+                    let barW = 240;
+                    let barH = 14;
+                    let barX = LW / 2 - barW / 2;
+                    let barY = 55;
 
-                ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
-                ctx.fillRect(barX, barY, barW, barH);
-                ctx.fillStyle = colorBoss;
-                ctx.fillRect(barX, barY, barW * pctVida, barH);
-                ctx.strokeStyle = "#ffffff";
-                ctx.strokeRect(barX, barY, barW, barH);
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                    ctx.fillRect(barX, barY, barW, barH);
+                    ctx.fillStyle = colorBoss;
+                    ctx.fillRect(barX, barY, barW * pctVida, barH);
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.strokeRect(barX, barY, barW, barH);
 
-                ctx.fillStyle = "#ffffff";
-                ctx.font = "12px sans-serif";
-                ctx.textAlign = "center";
-                ctx.fillText(`NÚCLEO ELYSIUM - FASE ${boss.fase} / 4 (${boss.vida} / ${boss.vidaMax} HP)`, canvas.width / 2, barY - 6);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "12px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(`NÚCLEO ELYSIUM - FASE ${boss.fase} / 4 (${boss.vida} / ${boss.vidaMax} HP)`, LW / 2, barY - 6);
+                }
             }
 
             particulasBoss.forEach(pt => {
@@ -1206,47 +1697,1015 @@
                 ctx.globalAlpha = 1.0;
             });
 
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffffff";
-            ctx.shadowColor = nivel.color;
-            ctx.shadowBlur = 12;
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            dibujarUlti();
 
-            ctx.strokeStyle = "#00f0ff";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(player.x, player.y - player.radius);
-            ctx.lineTo(player.x, player.y - player.radius - 8);
-            ctx.stroke();
+            // RASTRO DE MOVIMIENTO DEL JUGADOR
+            rastroJugador.forEach(rt => {
+                ctx.save();
+                ctx.globalAlpha = rt.alpha * 0.4;
+                ctx.fillStyle = "#00f0ff";
+                ctx.beginPath();
+                ctx.arc(rt.x, rt.y, rt.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
 
-            let brilloRadar = Math.sin(contadorFrames * 0.15) * 3 + 4;
-            ctx.fillStyle = "#00f0ff";
-            ctx.shadowColor = "#00f0ff";
-            ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.arc(player.x, player.y - player.radius - 8, brilloRadar, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            // ANIMACIÓN DE RESPAWN HOLOGRÁFICO AL PERDER VIDA
+            if (animRespawnTimer > 0) {
+                animRespawnTimer--;
+                ctx.save();
+                ctx.strokeStyle = "#00f0ff";
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = animRespawnTimer / 40;
+                let radioHolo = (40 - animRespawnTimer) * 1.5;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, radioHolo, 0, Math.PI * 2);
+                ctx.stroke();
 
-            if (esperandoSiguienteNivel) {
+                ctx.fillStyle = "rgba(0, 240, 255, 0.2)";
+                ctx.fillRect(player.x - 15, 0, 30, LH);
+                ctx.restore();
+            }
+
+            // DIBUJO DEL JUGADOR
+            dibujarFx();
+            dibujarPersonaje(player, "#00f0ff", nivel.color);
+
+            // PARTICULAS DE PERDER VIDA
+            particulasPerderVida.forEach(pt => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, pt.alpha);
+                ctx.fillStyle = pt.color;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // VIGNETTE ROJA AL PERDER VIDA
+            if (animPerderVidaTimer > 0) {
+                animPerderVidaTimer--;
+                ctx.save();
+                ctx.fillStyle = `rgba(255, 0, 85, ${animPerderVidaTimer / 60})`;
+                ctx.fillRect(0, 0, LW, LH);
+                ctx.restore();
+            }
+
+            // TEXTOS FLOTANTES DE COMBO PARRY
+            textosCombo.forEach(txt => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, txt.alpha);
+                ctx.fillStyle = "#00f0ff";
+                ctx.font = "bold 16px sans-serif";
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = 10;
+                ctx.textAlign = "center";
+                ctx.fillText(txt.text, txt.x, txt.y);
+                ctx.restore();
+            });
+
+            if (esperandoSiguienteNivel && !juegoTerminado) {
                 ctx.save();
                 ctx.fillStyle = "rgba(5, 5, 12, 0.75)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, LW, LH);
 
                 ctx.fillStyle = "#00ff88";
                 ctx.font = "bold 24px sans-serif";
                 ctx.textAlign = "center";
                 ctx.shadowColor = "#00ff88";
                 ctx.shadowBlur = 15;
-                ctx.fillText("¡PORTAL SINTONIZADO!", canvas.width / 2, canvas.height / 2 - 30);
+                ctx.fillText("¡PORTAL SINTONIZADO!", LW / 2, LH / 2 - 30);
 
-                dibujarBoton(260, canvas.height / 2, 280, 50, "AVANZAR AL SIGUIENTE NIVEL", "#00ff88");
+                dibujarBoton(260, LH / 2, 280, 50, "AVANZAR AL SIGUIENTE NIVEL", "#00ff88");
                 ctx.restore();
             }
 
+            ctx.restore();
+        }
+
+        // --- MODO MULTIJUGADOR LOCAL (2 JUGADORES, COOP VS NÚCLEO) ---
+        let mp = null;
+        const MP_PLAT = { x: 100, y: 380, w: 600, h: 24 };
+        const MP_CTRL = [
+            { izq: "KeyA", der: "KeyD", salto: "KeyW" },
+            { izq: "ArrowLeft", der: "ArrowRight", salto: "ArrowUp" }
+        ];
+
+        function iniciarMulti() {
+            estadoJuego = "MULTI";
+            contadorFrames = 0;
+            temblorPantalla = 0;
+            ultFlash = 0;
+            mp = {
+                jug: [0, 1].map(i => ({ x: 300 + i * 200, y: 350, vy: 0, vidas: 3, vivo: true, inv: 0, parrys: 0, dano: 0, carga: 0, color: i === 0 ? "#00f0ff" : "#ffaa00" })),
+                boss: { x: 400, y: 100, radius: 40, vida: 20, vidaMax: 20, fase: 1 },
+                proy: [], rayos: [], parts: [], textos: [], fin: null, finTimer: 0
+            };
+        }
+
+        function mpExplosion(x, y, n, color, vel) {
+            for (let k = 0; k < n; k++) {
+                mp.parts.push({ x: x, y: y, vx: (Math.random() - 0.5) * vel, vy: (Math.random() - 0.5) * vel, alpha: 1, color: color });
+            }
+        }
+
+        function mpGolpe(i, ignorarInv) {
+            let p = mp.jug[i];
+            if (!p.vivo || ((p.inv > 0 || mp.ult) && !ignorarInv)) return; // el escudo de la ulti protege al equipo
+            p.vidas--;
+            playSound('hit');
+            temblorPantalla = 8;
+            mpExplosion(p.x, p.y, 30, p.color, 10);
+            if (p.vidas <= 0) {
+                p.vivo = false;
+                if (!mp.jug.some(j => j.vivo)) { mp.fin = "DERROTA"; mp.finTimer = 0; }
+            } else {
+                p.x = 300 + i * 200; p.y = 350; p.vy = 0; p.inv = 90;
+            }
+        }
+
+        function mpParry(i) {
+            let p = mp.jug[i];
+            if (!p.vivo || mp.fin) return;
+            if (p.carga >= 5 && !mp.ult) { mpUlti(i); return; }
+            let ok = false;
+            mp.proy.forEach(pr => {
+                if (!pr.devuelto && pr.esRojo && Math.hypot(p.x - pr.x, p.y - pr.y) < 85) {
+                    pr.devuelto = true;
+                    pr.por = i;
+                    pr.esParry = pr.esRojo;
+                    pr.vy = pr.esRojo ? -14 : -9.5;
+                    ok = true;
+                }
+            });
+            if (ok) {
+                p.parrys++;
+                p.carga = Math.min(5, p.carga + 1);
+                fxAnillo(p.x, p.y, p.color, 60, 18, false);
+                temblorPantalla = 7;
+                playSound('parry');
+                mp.textos.push({ text: "PARRY!", x: p.x, y: p.y - 24, alpha: 1, color: p.color });
+            }
+        }
+
+        function multiTecla(code) {
+            if (code === "Escape") { estadoJuego = "MENU"; return; }
+            if (mp.fin) {
+                if (mp.finTimer > 60 && (code === "Space" || code === "Enter")) iniciarMulti();
+                return;
+            }
+            if (code === "Space") mpParry(0);
+            if (code === "Enter" || code === "NumpadEnter") mpParry(1);
+        }
+
+        function multiClick() {
+            if (!mp || !mp.fin || mp.finTimer < 30) return;
+            if (mouseX >= 220 && mouseX <= 390 && mouseY >= 330 && mouseY <= 375) {
+                playSound('button');
+                iniciarMulti();
+            } else if (mouseX >= 410 && mouseX <= 580 && mouseY >= 330 && mouseY <= 375) {
+                playSound('button');
+                estadoJuego = "MENU";
+            }
+        }
+
+        function actualizarMulti() {
+            if (!mp) return;
+            let b = mp.boss;
+
+            mp.parts.forEach(pt => { pt.x += pt.vx; pt.y += pt.vy; pt.alpha -= 0.03; });
+            mp.parts = mp.parts.filter(pt => pt.alpha > 0);
+            mp.textos.forEach(t => { t.y -= 0.8; t.alpha -= 0.02; });
+            mp.textos = mp.textos.filter(t => t.alpha > 0);
+
+            if (mp.ult) {
+                let u = mp.ult;
+                let pu = mp.jug[u.por];
+                if (pu.vivo) { u.x = pu.x; u.y = pu.y; }
+                let fin = avanzarUlti(u, b.x, b.y, () => {
+                    mp.proy.forEach(pr => mpExplosion(pr.x, pr.y, 6, pr.esRojo ? "#ff0033" : "#ffcc00", 8));
+                    mp.proy = [];
+                    mp.rayos = [];
+                    let d = Math.min(4, b.vida);
+                    b.vida -= d;
+                    pu.dano += d;
+                    mpExplosion(b.x, b.y, 45, "#ffd700", 16);
+                    mp.textos.push({ text: "¡ULTI: NOVA ELYSIUM!", x: u.x, y: u.y - 40, alpha: 1, color: u.color });
+                    if (b.vida <= 0) {
+                        b.vida = 0;
+                        mp.fin = "VICTORIA";
+                        mp.finTimer = 0;
+                        mp.ult = null;
+                        playSound('win');
+                    }
+                }, mp.parts);
+                if (fin) mp.ult = null;
+            }
+
+            if (mp.fin) {
+                mp.finTimer++;
+                if (mp.fin === "VICTORIA" && mp.finTimer < 150 && contadorFrames % 8 === 0) {
+                    mpExplosion(b.x + (Math.random() - 0.5) * 80, b.y + (Math.random() - 0.5) * 80, 12, Math.random() < 0.5 ? "#00f0ff" : "#ff0055", 12);
+                }
+                return;
+            }
+
+            // Jugadores
+            mp.jug.forEach((p, i) => {
+                if (!p.vivo) return;
+                let c = MP_CTRL[i];
+                if (keys[c.izq]) p.x -= player.speed;
+                if (keys[c.der]) p.x += player.speed;
+                p.x = Math.max(15, Math.min(LW - 15, p.x));
+                p.vy += 0.38;
+                p.y += p.vy;
+                if (p.inv > 0) p.inv--;
+
+                let P = MP_PLAT;
+                if (p.x + 12 > P.x && p.x - 12 < P.x + P.w && p.y + 12 >= P.y && p.y + 12 <= P.y + P.h / 2 && p.vy > 0) {
+                    p.y = P.y - 12;
+                    p.vy = 0;
+                    if (keys[c.salto]) { p.vy = -10; playSound('jump'); }
+                }
+                visualTick(p, ((keys[c.der] ? 1 : 0) - (keys[c.izq] ? 1 : 0)), p.color);
+                if (p.y > LH + 15) mpGolpe(i, true);
+            });
+
+            // Jefe
+            let vivos = mp.jug.filter(j => j.vivo);
+            let pct = b.vida / b.vidaMax;
+            b.fase = pct > 0.75 ? 1 : (pct > 0.5 ? 2 : (pct > 0.25 ? 3 : 4));
+            b.x = 400 + Math.sin(contadorFrames * 0.02 * b.fase) * (190 + (b.fase >= 3 ? 40 : 0));
+
+            if (b.fase >= 2 && contadorFrames % (b.fase >= 3 ? 75 : 110) === 0) {
+                mp.rayos.push({ x: 180 + Math.random() * 440, adv: 45, dur: 30, ancho: 16 });
+            }
+            mp.rayos.forEach(ry => {
+                if (ry.adv > 0) { ry.adv--; }
+                else if (ry.dur > 0) {
+                    ry.dur--;
+                    mp.jug.forEach((p, i) => {
+                        if (p.vivo && Math.abs(p.x - ry.x) < 12 + ry.ancho / 2) mpGolpe(i);
+                    });
+                }
+            });
+            mp.rayos = mp.rayos.filter(ry => ry.dur > 0);
+
+            let cad = [0, 100, 80, 62, 48][b.fase];
+            if (contadorFrames % cad === 0 && vivos.length > 0) {
+                let n = b.fase === 4 ? 2 : 1;
+                for (let k = 0; k < n; k++) {
+                    let t = vivos[Math.floor(Math.random() * vivos.length)];
+                    let esRojo = Math.random() < 0.35 + b.fase * 0.08;
+                    let vy = 2.2 * (esRojo ? 1.3 : 1.0) * (1 + b.fase * 0.12);
+                    let tf = Math.max(20, (t.y - b.y) / vy);
+                    mp.proy.push({
+                        x: b.x, y: b.y,
+                        vx: (t.x - b.x) / tf + (Math.random() - 0.5) * 1.5,
+                        vy: vy,
+                        radius: esRojo ? 10 : 8,
+                        esRojo: esRojo, devuelto: false, esParry: false, por: -1
+                    });
+                }
+                playSound('shoot');
+            }
+
+            mp.proy.forEach(pr => {
+                if (pr.devuelto) pr.vx = (b.x - pr.x) * 0.14;
+                pr.x += pr.vx;
+                pr.y += pr.vy;
+
+                if (!pr.devuelto) {
+                    mp.jug.forEach((p, i) => {
+                        if (p.vivo && p.inv <= 0 && Math.hypot(p.x - pr.x, p.y - pr.y) < 12 + pr.radius) {
+                            pr.destruir = true;
+                            mpGolpe(i);
+                        }
+                    });
+                } else if (Math.hypot(b.x - pr.x, b.y - pr.y) < b.radius + pr.radius) {
+                    b.vida--;
+                    pr.destruir = true;
+                    if (pr.por >= 0) mp.jug[pr.por].dano++;
+                    temblorPantalla = pr.esParry ? 18 : 10;
+                    playSound('explosion');
+                    mpExplosion(b.x, b.y, pr.esParry ? 30 : 15, pr.esParry ? "#00f0ff" : "#ff0055", pr.esParry ? 14 : 9);
+                    if (b.vida <= 0) {
+                        b.vida = 0;
+                        mp.fin = "VICTORIA";
+                        mp.finTimer = 0;
+                        mp.rayos = [];
+                        playSound('win');
+                    }
+                }
+            });
+            mp.proy = mp.proy.filter(pr => !pr.destruir && pr.y > -50 && pr.y < LH + 50);
+            if (mp.fin) mp.proy = [];
+        }
+
+        function dibujarMulti() {
+            if (!mp) return;
+            let b = mp.boss;
+            let colorBoss = b.fase === 4 ? "#ff0000" : (b.fase === 3 ? "#ff3300" : (b.fase === 2 ? "#ff5500" : "#ff0055"));
+
+            // Etiqueta de audio
+            ctx.save();
+            ctx.fillStyle = audioMuted ? "#ff0055" : "#00f0ff";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText(audioMuted ? "MUTE [x]" : "AUDIO [on]", LW - 15, 25);
+            ctx.restore();
+
+            // Plataforma
+            ctx.save();
+            ctx.fillStyle = "#00f0ff";
+            ctx.shadowColor = "#00f0ff";
+            ctx.shadowBlur = 15;
+            ctx.fillRect(MP_PLAT.x, MP_PLAT.y, MP_PLAT.w, MP_PLAT.h);
+            ctx.restore();
+
+            // Rayos
+            mp.rayos.forEach(ry => {
+                ctx.save();
+                if (ry.adv > 0) {
+                    ctx.strokeStyle = "rgba(255, 0, 85, 0.4)";
+                    ctx.setLineDash([6, 6]);
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(ry.x, 0);
+                    ctx.lineTo(ry.x, LH);
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = "#ff0055";
+                    ctx.shadowColor = "#ff0055";
+                    ctx.shadowBlur = 25;
+                    ctx.fillRect(ry.x - ry.ancho / 2, 0, ry.ancho, LH);
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(ry.x - 2, 0, 4, LH);
+                }
+                ctx.restore();
+            });
+
+            // Jefe
+            ctx.save();
+            if (mp.fin === "VICTORIA") {
+                ctx.globalAlpha = Math.max(0, 1 - mp.finTimer / 120);
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "#00f0ff";
+                ctx.shadowBlur = 40;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius + Math.random() * 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = colorBoss;
+                ctx.shadowColor = colorBoss;
+                ctx.shadowBlur = 30 + b.fase * 10;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = b.fase >= 3 ? "#ffcc00" : "#ffffff";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(b.x, b.y, b.radius + 14, b.radius + 5, contadorFrames * 0.04 * b.fase, 0, Math.PI * 2);
+                ctx.stroke();
+                if (b.fase >= 2) {
+                    ctx.strokeStyle = "#00f0ff";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(b.x, b.y, b.radius + 6, b.radius + 16, -contadorFrames * 0.06, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 8 + Math.sin(contadorFrames * 0.2) * 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            if (mp.ult) dibujarUltiFx(mp.ult, b.x, b.y);
+            dibujarFlashUlti();
+            dibujarFx();
+
+            // Proyectiles
+            mp.proy.forEach(pr => {
+                ctx.save();
+                let col = pr.devuelto ? (pr.esParry ? "#00f0ff" : "#ffffff") : (pr.esRojo ? "#ff0033" : "#ffcc00");
+                ctx.fillStyle = col;
+                ctx.shadowColor = col;
+                ctx.shadowBlur = 18;
+                ctx.beginPath();
+                ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
+                ctx.fill();
+                if (pr.esRojo && !pr.devuelto) {
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(pr.x, pr.y, pr.radius + 4, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            });
+
+            // Jugadores
+            mp.jug.forEach((p, i) => {
+                if (!p.vivo) return;
+                if (p.inv > 0 && Math.floor(p.inv / 5) % 2 === 0) return;
+                dibujarPersonaje(p, p.color, p.color);
+                ctx.save();
+                ctx.fillStyle = p.color;
+                ctx.font = "bold 11px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("J" + (i + 1), p.x, p.y - 38);
+                if (p.carga >= 5) {
+                    ctx.strokeStyle = "#ffd700";
+                    ctx.shadowColor = "#ffd700";
+                    ctx.shadowBlur = 15;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 19 + Math.sin(contadorFrames * 0.25) * 3, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            });
+
+            // Partículas y textos
+            mp.parts.forEach(pt => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, pt.alpha);
+                ctx.fillStyle = pt.color;
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+            mp.textos.forEach(t => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, t.alpha);
+                ctx.fillStyle = t.color;
+                ctx.shadowColor = t.color;
+                ctx.shadowBlur = 10;
+                ctx.font = "bold 16px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(t.text, t.x, t.y);
+                ctx.restore();
+            });
+
+            // HUD
+            ctx.save();
+            ctx.font = "14px sans-serif";
+            ctx.textAlign = "left";
+            mp.jug.forEach((p, i) => {
+                ctx.fillStyle = p.color;
+                ctx.fillText(`J${i + 1} VIDAS: ${p.vivo ? "❤️ ".repeat(Math.max(0, p.vidas)) : "ELIMINADO"}`, 25, 30 + i * 22);
+                for (let k = 0; k < 5; k++) {
+                    ctx.beginPath();
+                    ctx.arc(222 + k * 13, 25 + i * 22, 4, 0, Math.PI * 2);
+                    if (k < p.carga) { ctx.fillStyle = "#ffd700"; ctx.fill(); }
+                    else { ctx.strokeStyle = p.color; ctx.lineWidth = 1; ctx.stroke(); }
+                }
+            });
+            if (!mp.fin) {
+                let pctVida = Math.max(0, b.vida / b.vidaMax);
+                let barW = 240, barH = 14, barX = LW / 2 - barW / 2, barY = 55;
+                ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                ctx.fillRect(barX, barY, barW, barH);
+                ctx.fillStyle = colorBoss;
+                ctx.fillRect(barX, barY, barW * pctVida, barH);
+                ctx.strokeStyle = "#ffffff";
+                ctx.strokeRect(barX, barY, barW, barH);
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(`NÚCLEO ELYSIUM - FASE ${b.fase} / 4 (${b.vida} / ${b.vidaMax} HP)`, LW / 2, barY - 6);
+            }
+            ctx.fillStyle = "#8892b0";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.font = "11px sans-serif";
+            ctx.fillText("J1: A/D · W · ESPACIO     |     J2: ←/→ · ↑ · ENTER     |     Parry solo a esferas ROJAS · 5 parrys = ULTI     |     ESC: menú", LW / 2, 470);
+            ctx.restore();
+
+            // Pantalla final
+            if (mp.fin) {
+                let gano = mp.fin === "VICTORIA";
+                ctx.save();
+                ctx.fillStyle = "rgba(5, 5, 12, 0.75)";
+                ctx.fillRect(0, 0, LW, LH);
+                ctx.textAlign = "center";
+                ctx.fillStyle = gano ? "#ffd700" : "#ff0055";
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.shadowBlur = 25;
+                ctx.font = "bold 30px sans-serif";
+                ctx.fillText(gano ? "¡VICTORIA COOPERATIVA!" : "¡DERROTA!", LW / 2, 150);
+                ctx.shadowBlur = 0;
+                ctx.font = "16px sans-serif";
+                mp.jug.forEach((p, i) => {
+                    ctx.fillStyle = p.color;
+                    ctx.fillText(`J${i + 1}  —  Parrys: ${p.parrys}  ·  Daño al Núcleo: ${p.dano}`, LW / 2, 205 + i * 30);
+                });
+                ctx.restore();
+                dibujarBoton(220, 330, 170, 45, "JUGAR DE NUEVO", "#00ff88");
+                dibujarBoton(410, 330, 170, 45, "VOLVER AL MENÚ", "#ff0055");
+            }
+        }
+
+        // --- ULTI "NOVA ELYSIUM" (se carga con 5 parrys, se lanza con ESPACIO / tecla de parry) ---
+        let ultCarga = 0;
+        let ult = null;
+        let ultFlash = 0;
+
+        function avanzarUlti(u, bx, by, alGolpear, particulas) {
+            u.t++;
+            if (u.t < 40) {
+                // Fase de carga: chispas que convergen hacia el jugador
+                if (u.t % 2 === 0) {
+                    for (let k = 0; k < 2; k++) {
+                        let a = Math.random() * Math.PI * 2;
+                        let d = 90 + Math.random() * 40;
+                        particulas.push({ x: u.x + Math.cos(a) * d, y: u.y + Math.sin(a) * d, vx: -Math.cos(a) * 3.4, vy: -Math.sin(a) * 3.4, alpha: 1, color: u.color });
+                    }
+                }
+                temblorPantalla = Math.max(temblorPantalla, u.t / 6);
+            } else if (u.t === 40) {
+                // Disparo
+                ultFlash = 14;
+                temblorPantalla = 30;
+                playSound('ulti');
+                alGolpear();
+            } else if (u.t < 90) {
+                // Rayo activo: chispas a lo largo del haz
+                for (let k = 0; k < 3; k++) {
+                    let f = Math.random();
+                    particulas.push({ x: u.x + (bx - u.x) * f, y: u.y + (by - u.y) * f, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, alpha: 1, color: Math.random() < 0.5 ? "#ffffff" : u.color });
+                }
+                temblorPantalla = Math.max(temblorPantalla, 6);
+            }
+            return u.t >= 95;
+        }
+
+        function dibujarUltiFx(u, bx, by) {
+            let t = u.t;
+            ctx.save();
+            if (t < 40) {
+                // Carga: pantalla oscura, anillos que convergen, estrella giratoria y n\u00facleo de luz
+                ctx.fillStyle = `rgba(0, 0, 12, ${Math.min(0.5, t / 50)})`;
+                ctx.fillRect(0, 0, LW, LH);
+                ctx.translate(u.x, u.y);
+                ctx.strokeStyle = u.color;
+                ctx.shadowColor = u.color;
+                ctx.shadowBlur = 20;
+                ctx.lineWidth = 2;
+                for (let k = 0; k < 3; k++) {
+                    let r = 120 - ((t * 3 + k * 40) % 120);
+                    ctx.globalAlpha = Math.max(0, Math.min(1, 1.2 - r / 120));
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+                ctx.rotate(t * 0.12);
+                for (let k = 0; k < 6; k++) {
+                    ctx.rotate(Math.PI / 3);
+                    ctx.beginPath();
+                    ctx.moveTo(18, 0);
+                    ctx.lineTo(18 + t * 1.1, 0);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(0, 0, 6 + t * 0.45, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (t < 90) {
+                // Rayo: haz grueso con n\u00facleo blanco, rel\u00e1mpagos y ondas de choque
+                let p = (t - 40) / 50;
+                let w = 12 + 58 * (1 - p);
+                ctx.lineCap = "round";
+                ctx.shadowColor = u.color;
+                ctx.shadowBlur = 40;
+                ctx.strokeStyle = u.color;
+                ctx.globalAlpha = 0.55;
+                ctx.lineWidth = w * 1.6;
+                ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(bx, by); ctx.stroke();
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = w * 0.5;
+                ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(bx, by); ctx.stroke();
+
+                ctx.lineCap = "butt";
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = u.color;
+                for (let k = 0; k < 2; k++) {
+                    ctx.beginPath();
+                    ctx.moveTo(u.x, u.y);
+                    for (let sg = 1; sg <= 8; sg++) {
+                        let f = sg / 8;
+                        ctx.lineTo(u.x + (bx - u.x) * f + (Math.random() - 0.5) * 60 * (1 - p),
+                                   u.y + (by - u.y) * f + (Math.random() - 0.5) * 60 * (1 - p));
+                    }
+                    ctx.stroke();
+                }
+
+                ctx.lineWidth = 4;
+                for (let k = 0; k < 2; k++) {
+                    let pr = (p + k * 0.5) % 1;
+                    ctx.globalAlpha = 1 - pr;
+                    ctx.beginPath();
+                    ctx.arc(bx, by, 30 + pr * 150, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1 - p;
+                ctx.beginPath();
+                ctx.arc(u.x, u.y, 18 + p * 40, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function dibujarFlashUlti() {
+            if (ultFlash > 0) {
+                ctx.save();
+                ctx.fillStyle = `rgba(255, 255, 255, ${ultFlash / 14})`;
+                ctx.fillRect(0, 0, LW, LH);
+                ctx.restore();
+                ultFlash--;
+            }
+        }
+
+        // Modo un jugador
+        function lanzarUlti() {
+            ult = { t: 0, x: player.x, y: player.y, color: "#ffd700" };
+            ultCarga = 0;
+            playSound('echo');
+            textosCombo.push({ text: "¡ULTI: NOVA ELYSIUM!", x: player.x, y: player.y - 40, alpha: 1.0, scale: 1.2 });
+        }
+
+        function actualizarUlti() {
+            if (!ult) return;
+            ult.x = player.x;
+            ult.y = player.y;
+            let fin = avanzarUlti(ult, boss.x, boss.y, () => {
+                proyectilesBoss.forEach(pr => {
+                    for (let k = 0; k < 6; k++) {
+                        particulasBoss.push({ x: pr.x, y: pr.y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, alpha: 1, color: pr.esRojo ? "#ff0033" : "#ffcc00" });
+                    }
+                });
+                proyectilesBoss = [];
+                rayosCaoticos = [];
+                boss.vida = Math.max(0, boss.vida - 3);
+                for (let k = 0; k < 45; k++) {
+                    particulasBoss.push({ x: boss.x, y: boss.y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16, alpha: 1, color: Math.random() < 0.5 ? "#ffd700" : "#ffffff" });
+                }
+                if (boss.vida <= 0) { boss.animDefeatedTimer = 180; ult = null; }
+            }, particulasBoss);
+            if (fin) ult = null;
+        }
+
+        function dibujarUlti() {
+            if (nivelActual !== 7 || juegoTerminado) return;
+            if (ult) dibujarUltiFx(ult, boss.x, boss.y);
+            dibujarFlashUlti();
+
+            // Medidor de ulti
+            let lista = ultCarga >= 5;
+            ctx.save();
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillStyle = lista ? "#ffd700" : "#8892b0";
+            ctx.fillText("ULTI", 25, 52);
+            for (let k = 0; k < 5; k++) {
+                ctx.beginPath();
+                ctx.arc(72 + k * 16, 48, 5, 0, Math.PI * 2);
+                if (k < ultCarga) {
+                    ctx.fillStyle = "#ffd700";
+                    ctx.shadowColor = "#ffd700";
+                    ctx.shadowBlur = 10;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.strokeStyle = "#8892b0";
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+            if (lista) {
+                ctx.globalAlpha = 0.65 + 0.35 * Math.sin(contadorFrames * 0.2);
+                ctx.fillStyle = "#ffd700";
+                ctx.shadowColor = "#ffd700";
+                ctx.shadowBlur = 12;
+                ctx.fillText("¡ULTI LISTA! Pulsa [ESPACIO]", 25, 70);
+            }
+            ctx.restore();
+        }
+
+        // Modo multijugador
+        function mpUlti(i) {
+            let p = mp.jug[i];
+            p.carga = 0;
+            mp.ult = { t: 0, x: p.x, y: p.y, color: i === 0 ? "#00f0ff" : "#ffaa00", por: i };
+            playSound('echo');
+        }
+
+        // --- PULIDO VISUAL: personaje, salto, polvo, doble salto y fondo con parallax ---
+        let fxPolvo = [];
+        let fxAnillos = [];
+        let camSuave = 400;
+
+        function hexA(hex, a) {
+            let n = parseInt(hex.slice(1), 16);
+            return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+        }
+
+        function visOf(e) {
+            if (!e.vis) e.vis = { sx: 1, sy: 1, tilt: 0, face: 1, prevVy: 0, doble: false, dobleT: 0, t: 0 };
+            return e.vis;
+        }
+
+        function dirEntrada() {
+            return ((keys["KeyD"] || keys["ArrowRight"]) ? 1 : 0) - ((keys["KeyA"] || keys["ArrowLeft"]) ? 1 : 0);
+        }
+
+        function fxAnillo(x, y, color, rMax, life, plano) {
+            fxAnillos.push({ x: x, y: y, color: color, rMax: rMax, life: life, max: life, plano: !!plano });
+        }
+
+        function fxPuff(x, y, vx, vy, life, r, color) {
+            fxPolvo.push({ x: x, y: y, vx: vx, vy: vy, g: 0.02, life: life, max: life, r: r, color: color });
+        }
+
+        function fxAterrizaje(x, y, f, color) {
+            let n = 6 + Math.floor(f * 8);
+            for (let k = 0; k < n; k++) {
+                let d = k % 2 === 0 ? 1 : -1;
+                fxPuff(x + d * Math.random() * 8, y - 1,
+                       d * (0.8 + Math.random() * 2.2 * (0.5 + f)), -Math.random() * 0.9 * (0.5 + f),
+                       22 + Math.floor(Math.random() * 14), 2 + Math.random() * 2.5,
+                       k % 3 === 0 ? color : "#cfe9ff");
+            }
+            if (f > 0.5) fxAnillo(x, y, color, 30 + f * 30, 18, true);
+        }
+
+        function actualizarFx() {
+            fxPolvo.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= 0.96; p.life--; });
+            fxPolvo = fxPolvo.filter(p => p.life > 0);
+            fxAnillos.forEach(a => a.life--);
+            fxAnillos = fxAnillos.filter(a => a.life > 0);
+        }
+
+        function dibujarFx() {
+            ctx.save();
+            fxAnillos.forEach(a => {
+                let t = 1 - a.life / a.max;
+                let r = a.rMax * (1 - Math.pow(1 - t, 2));
+                ctx.globalAlpha = Math.max(0, (1 - t) * 0.9);
+                ctx.strokeStyle = a.color;
+                ctx.shadowColor = a.color;
+                ctx.shadowBlur = 12;
+                ctx.lineWidth = 3 * (1 - t) + 1;
+                ctx.beginPath();
+                if (a.plano) ctx.ellipse(a.x, a.y, r, r * 0.28, 0, 0, Math.PI * 2);
+                else ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+            ctx.shadowBlur = 0;
+            fxPolvo.forEach(p => {
+                let k = Math.max(0, p.life / p.max);
+                ctx.globalAlpha = k * 0.8;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r * (0.5 + 0.5 * k), 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
+        }
+
+        // Se llama una vez por frame, despu\u00e9s de las colisiones
+        function visualTick(e, dir, color) {
+            let v = visOf(e);
+            v.t++;
+            let pies = e.y + 12;
+            if (dir !== 0) v.face = dir;
+            v.tilt += (dir * 0.16 - v.tilt) * 0.2;
+            if (e.vy === 0) v.doble = false;
+
+            let aterrizo = v.prevVy > 1.5 && e.vy <= 0;
+            if (aterrizo) {
+                let f = Math.min(1, v.prevVy / 9);
+                v.sx = 1 + 0.45 * f;
+                v.sy = 1 - 0.4 * f;
+                v.doble = false;
+                fxAterrizaje(e.x, pies, f, color);
+            }
+            // despegue (el doble salto fija prevVy para no contarse aqu\u00ed)
+            if (e.vy < -5 && v.prevVy > -5) {
+                if (!aterrizo) { v.sx = 0.78; v.sy = 1.25; }
+                for (let k = 0; k < 5; k++) {
+                    let d = k % 2 === 0 ? 1 : -1;
+                    fxPuff(e.x + d * 4, pies - 1, d * (0.6 + Math.random() * 1.4), -Math.random() * 0.5, 16 + Math.floor(Math.random() * 8), 2 + Math.random() * 1.5, "#cfe9ff");
+                }
+            }
+
+            let aire = e.vy !== 0;
+            let tsy = aire ? 1 + Math.min(0.28, Math.abs(e.vy) * 0.028) : 1;
+            let tsx = aire ? 1 - (tsy - 1) * 0.7 : 1;
+            v.sx += (tsx - v.sx) * 0.22;
+            v.sy += (tsy - v.sy) * 0.22;
+
+            if (!aire && dir !== 0 && v.t % 7 === 0) {
+                fxPuff(e.x - dir * 6, pies - 1, -dir * 0.5 + (Math.random() - 0.5) * 0.4, -0.3, 14, 2, "#cfe9ff");
+            }
+            if (v.dobleT > 0) {
+                v.dobleT--;
+                fxPolvo.push({ x: e.x + (Math.random() - 0.5) * 10, y: e.y + 6 + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 0.6, vy: 0.4, g: 0, life: 18, max: 18, r: 3.5, color: color });
+            }
+            v.prevVy = e.vy;
+        }
+
+        function intentarDoble(e, color) {
+            let v = visOf(e);
+            if (e.vy === 0 || v.doble) return;
+            v.doble = true;
+            e.vy = -8.6;
+            v.prevVy = -8.6;
+            v.dobleT = 22;
+            v.sx = 0.7;
+            v.sy = 1.35;
+            fxAnillo(e.x, e.y + 12, color, 46, 20, true);
+            fxAnillo(e.x, e.y, color, 28, 14, false);
+            for (let k = 0; k < 14; k++) {
+                let a = Math.PI * (0.1 + 0.8 * Math.random());
+                let sp = 1.2 + Math.random() * 2.6;
+                fxPolvo.push({ x: e.x, y: e.y + 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, g: 0.03, life: 22, max: 22, r: 2.5 + Math.random() * 2, color: k % 2 === 0 ? color : "#ffffff" });
+            }
+            playSound('djump');
+        }
+
+        function manejarSaltoDoble(code) {
+            if (estadoJuego === "MULTI") {
+                if (!mp || mp.fin) return;
+                let i = code === "KeyW" ? 0 : (code === "ArrowUp" ? 1 : -1);
+                if (i >= 0 && mp.jug[i].vivo) intentarDoble(mp.jug[i], mp.jug[i].color);
+                return;
+            }
+            if (code !== "KeyW" && code !== "ArrowUp") return;
+            if (estadoJuego === "TUTORIAL") {
+                intentarDoble(player, "#00ff88");
+            } else if (estadoJuego === "JUEGO" && !gameOver && !esperandoSiguienteNivel && !juegoTerminado && boss.animDefeatedTimer === 0) {
+                intentarDoble(player, nivel.color);
+            }
+        }
+
+        // Personaje: orbe-robot con visor, antena, propulsor y squash & stretch
+        function dibujarPersonaje(e, acento, glow) {
+            let v = visOf(e);
+            let r = 12;
+            let aire = e.vy !== 0;
+            ctx.save();
+            ctx.translate(e.x, e.y + r);
+            ctx.rotate(v.tilt);
+            ctx.scale(v.sx, v.sy);
+            ctx.translate(0, -r);
+
+            if (aire) {
+                let largo = 5 + Math.min(10, Math.abs(e.vy)) * 0.9 + Math.sin(v.t * 0.8) * 2;
+                let gp = ctx.createLinearGradient(0, r - 2, 0, r + largo);
+                gp.addColorStop(0, hexA(acento, 0.9));
+                gp.addColorStop(1, hexA(acento, 0));
+                ctx.fillStyle = gp;
+                ctx.beginPath();
+                ctx.moveTo(-5, r - 2);
+                ctx.lineTo(5, r - 2);
+                ctx.lineTo(0, r + largo);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            let ax = Math.sin(v.t * 0.12) * 2 - v.tilt * 14;
+            ctx.strokeStyle = acento;
+            ctx.lineWidth = 2;
+            ctx.shadowColor = acento;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.moveTo(0, -r + 1);
+            ctx.quadraticCurveTo(ax * 0.4, -r - 6, ax, -r - 11);
+            ctx.stroke();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(ax, -r - 11, 3 + Math.sin(v.t * 0.15) * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowColor = glow;
+            ctx.shadowBlur = 16;
+            let g = ctx.createRadialGradient(-4, -5, 1, 0, 0, r);
+            g.addColorStop(0, "#ffffff");
+            g.addColorStop(0.6, "#dff7ff");
+            g.addColorStop(1, hexA(acento, 1));
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = acento;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(0, 0, r - 1, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = acento;
+            ctx.fillRect(-r - 2, -3, 3, 6);
+            ctx.fillRect(r - 1, -3, 3, 6);
+
+            let m = v.face;
+            let oy = Math.max(-2, Math.min(2, e.vy * 0.2));
+            ctx.fillStyle = "#0a1020";
+            ctx.beginPath();
+            ctx.ellipse(m * 2.5, -1 + oy * 0.5, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            let parp = (v.t % 200) < 6 ? 0.2 : 1;
+            ctx.fillStyle = acento;
+            ctx.shadowColor = acento;
+            ctx.shadowBlur = 8;
+            [1, 6].forEach(ox => {
+                ctx.beginPath();
+                ctx.ellipse(m * ox, -1 + oy, 2, 2 * parp, 0, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+            ctx.beginPath();
+            ctx.ellipse(-4, -7, 3, 1.6, -0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Fondo con parallax: nebulosas, estrellas lejanas y ruinas cibern\u00e9ticas
+        let ruinas = [];
+        for (let capa = 0; capa < 2; capa++) {
+            let rx = -80;
+            while (rx < 880) {
+                let rw = 30 + Math.random() * 60;
+                ruinas.push({ x: rx, w: rw, h: (capa ? 70 : 110) + Math.random() * (capa ? 90 : 140), capa: capa });
+                rx += rw + 10 + Math.random() * 50;
+            }
+        }
+        let estrellasLejanas = [];
+        for (let i = 0; i < 50; i++) {
+            estrellasLejanas.push({ x: Math.random() * 800, y: Math.random() * 350, a: Math.random() * 0.6 + 0.2, v: Math.random() * 0.05 + 0.02 });
+        }
+
+        function dibujarFondoPro() {
+            let col = "#00f0ff";
+            if (estadoJuego === "JUEGO" && nivel) col = nivel.color;
+            else if (estadoJuego === "TUTORIAL") col = "#00ff88";
+
+            let cam = 400;
+            if (estadoJuego === "MENU") cam = 400 + Math.sin(contadorFrames * 0.01) * 80;
+            else if (estadoJuego === "MULTI" && mp) {
+                let vv = mp.jug.filter(j => j.vivo);
+                if (vv.length) cam = vv.reduce((a, j) => a + j.x, 0) / vv.length;
+            } else cam = player.x;
+            camSuave += (cam - camSuave) * 0.08;
+            let off = camSuave - 400;
+
+            ctx.save();
+            [[200, 150, 260, 0.10, col], [620, 260, 300, 0.08, "#b000ff"], [420, 60, 220, 0.07, col]].forEach((n, k) => {
+                let ox = -off * (0.01 + k * 0.01);
+                let pulso = 1 + Math.sin(contadorFrames * 0.01 + k * 2) * 0.08;
+                let g = ctx.createRadialGradient(n[0] + ox, n[1], 0, n[0] + ox, n[1], n[2] * pulso);
+                g.addColorStop(0, hexA(n[4], n[3]));
+                g.addColorStop(1, hexA(n[4], 0));
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, LW, LH);
+            });
+
+            estrellasLejanas.forEach(st => {
+                let x = (((st.x - off * 0.03) % 800) + 800) % 800;
+                ctx.globalAlpha = st.a * (0.6 + 0.4 * Math.sin(contadorFrames * st.v + st.x));
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(x, st.y, 1.5, 1.5);
+            });
+            ctx.globalAlpha = 1;
+
+            ruinas.forEach((r, idx) => {
+                let ox = -off * (r.capa ? 0.06 : 0.03);
+                let x = r.x + ox;
+                let y = LH - r.h;
+                ctx.fillStyle = r.capa ? "rgba(8, 14, 32, 0.9)" : "rgba(10, 18, 40, 0.65)";
+                ctx.fillRect(x, y, r.w, r.h);
+                ctx.fillStyle = hexA(col, r.capa ? 0.35 : 0.2);
+                ctx.fillRect(x, y, r.w, 1.5);
+                for (let j = 0; j < Math.floor(r.h / 24); j++) {
+                    if ((j * 7 + idx * 3) % 5 < 2) {
+                        let wx = x + 6 + ((j * 13 + idx * 5) % Math.max(1, Math.floor(r.w - 14)));
+                        ctx.fillStyle = hexA(col, 0.22 + 0.14 * Math.sin(contadorFrames * 0.03 + idx + j));
+                        ctx.fillRect(wx, y + 10 + j * 24, 4, 4);
+                    }
+                }
+            });
+
+            let hz = ctx.createLinearGradient(0, LH - 170, 0, LH);
+            hz.addColorStop(0, hexA(col, 0));
+            hz.addColorStop(1, hexA(col, 0.12));
+            ctx.fillStyle = hz;
+            ctx.fillRect(0, LH - 170, LW, 170);
             ctx.restore();
         }
 
