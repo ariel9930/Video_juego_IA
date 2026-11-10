@@ -71,7 +71,7 @@
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
-        // --- PANTALLA: resoluci\u00f3n l\u00f3gica fija 800x500, escalada para ocupar la ventana ---
+        // --- PANTALLA: resolución lógica fija 800x500, escalada para ocupar la ventana ---
         const LW = 800;
         const LH = 500;
         let escalaRender = 1;
@@ -386,6 +386,15 @@
             if (estadoJuego === "MULTI" && mp) multiTecla(e.code);
             if (!e.repeat) manejarSaltoDoble(e.code);
             if (e.code === "KeyF" && !e.repeat) alternarPantallaCompleta();
+            if (e.code === "Escape") {
+                if (estadoJuego === "VESTIMENTAS") estadoJuego = "MENU";
+                else if (estadoJuego === "JUEGO" && (gameOver || juegoTerminado)) {
+                    estadoJuego = "MENU";
+                    gameOver = false;
+                    juegoTerminado = false;
+                    vidas = 3;
+                }
+            }
             if (e.code === "Space" || e.code === "Enter") {
                 e.preventDefault();
                 accionarAccion();
@@ -400,12 +409,13 @@
         });
 
         function accionarAccion() {
-            if (estadoJuego === "MULTI") return;
+            if (estadoJuego === "MULTI" || estadoJuego === "VESTIMENTAS") return;
             initAudio();
             if (estadoJuego === "MENU") return;
 
-            if (estadoJuego === "GAME_OVER") {
-                reiniciarJuegoCompleto();
+            if (gameOver || juegoTerminado || estadoJuego === "GAME_OVER") {
+                let listo = juegoTerminado ? animVictoriaTimer > 90 : (contadorFrames - gameOverDesde > 30);
+                if (listo || estadoJuego === "GAME_OVER") reiniciarJuegoCompleto();
                 return;
             }
 
@@ -450,7 +460,7 @@
                 if (hizoParry) {
                     comboParry++;
                     ultCarga = Math.min(5, ultCarga + 1);
-                    fxAnillo(player.x, player.y, "#00f0ff", 60, 18, false);
+                    fxAnillo(player.x, player.y, colorSkin(), 60, 18, false);
                     playSound('parry');
                     textosCombo.push({
                         text: comboParry > 1 ? `PARRY X${comboParry}!` : "PARRY!",
@@ -479,18 +489,23 @@
             }
 
             if (estadoJuego === "MENU") {
-                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 240 && mouseY <= 290) {
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 385 && mouseY <= 433) {
+                    playSound('button');
+                    estadoJuego = "VESTIMENTAS";
+                    return;
+                }
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 205 && mouseY <= 253) {
                     playSound('button');
                     estadoJuego = "JUEGO";
                     cargarNivel(1);
                     return;
                 }
-                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 380 && mouseY <= 430) {
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 325 && mouseY <= 373) {
                     playSound('button');
                     iniciarMulti();
                     return;
                 }
-                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 310 && mouseY <= 360) {
+                if (mouseX >= 280 && mouseX <= 520 && mouseY >= 265 && mouseY <= 313) {
                     playSound('button');
                     estadoJuego = "TUTORIAL";
                     proyectilesTutorial = [];
@@ -498,6 +513,8 @@
                     player.y = 350;
                     return;
                 }
+            } else if (estadoJuego === "VESTIMENTAS") {
+                clickVestimentas();
             } else if (estadoJuego === "MULTI") {
                 multiClick();
             } else if (estadoJuego === "TUTORIAL") {
@@ -519,6 +536,9 @@
         });
 
         function reiniciarJuegoCompleto() {
+            fuegosArtificiales = [];
+            particulasBoss = [];
+            animVictoriaTimer = 0;
             vidas = 3;
             gameOver = false;
             juegoTerminado = false;
@@ -684,6 +704,7 @@
 
             if (vidas <= 0) {
                 gameOver = true;
+                gameOverDesde = contadorFrames;
             } else {
                 reiniciarPosicionJugador();
                 animRespawnTimer = 40; // Respawn holográfico
@@ -760,6 +781,7 @@
 
             mecerAnimaciones();
             actualizarFx();
+            if (estadoJuego === "VESTIMENTAS") return;
             if (estadoJuego === "MULTI") { actualizarMulti(); return; }
 
             if (estadoJuego === "MENU") return;
@@ -866,7 +888,7 @@
                     player.vy = 0;
                 }
 
-                visualTick(player, dirEntrada(), "#00ff88");
+                visualTick(player, dirEntrada(), colorSkin());
 
                 dronTutorial.x += 2.5 * dronTutorial.dir;
                 if (dronTutorial.x > 580) dronTutorial.dir = -1;
@@ -1176,7 +1198,7 @@
             });
             particulasBoss = particulasBoss.filter(pt => pt.alpha > 0);
 
-            visualTick(player, dirEntrada(), nivel.color);
+            visualTick(player, dirEntrada(), colorSkin());
 
             // ACTIVACIÓN DE PORTAL (CRISTAL)
             let distPlayerCristal = Math.hypot(player.x - cx, player.y - cy);
@@ -1335,13 +1357,17 @@
                 ctx.fillText("Navega por la oscuridad usando impulsos de sonido", LW / 2, 170);
                 ctx.restore();
 
-                dibujarBoton(280, 240, 240, 50, "JUGAR", "#00f0ff");
-                dibujarBoton(280, 310, 240, 50, "TUTORIAL Y GUÍA", "#00ff88");
-                dibujarBoton(280, 380, 240, 50, "MULTIJUGADOR 2P", "#b000ff");
+                dibujarBoton(280, 205, 240, 48, "JUGAR", "#00f0ff");
+                dibujarBoton(280, 265, 240, 48, "TUTORIAL Y GUÍA", "#00ff88");
+                dibujarBoton(280, 325, 240, 48, "MULTIJUGADOR 2P", "#b000ff");
+                dibujarBoton(280, 385, 240, 48, "VESTIMENTAS", "#ffd700");
+                dibujarPreviewSkin(150, 360, 2.4, true);
 
                 ctx.restore();
                 return;
             }
+
+            if (estadoJuego === "VESTIMENTAS") { dibujarVestimentas(); ctx.restore(); return; }
 
             if (estadoJuego === "TUTORIAL") {
                 ctx.save();
@@ -1395,7 +1421,7 @@
                 });
 
                 dibujarFx();
-                dibujarPersonaje(player, "#00ff88", "#00ff88");
+                dibujarPersonaje(player, colorSkin(), colorSkin(), skin);
 
                 dibujarBoton(50, 440, 150, 40, "VOLVER AL MENÚ", "#ff0055");
                 dibujarBoton(590, 440, 160, 40, "COMENZAR AVENTURA", "#00ff88");
@@ -1425,7 +1451,9 @@
                 ctx.fillText("¡GAME OVER!", LW / 2, LH / 2 - 20);
                 ctx.font = "16px sans-serif";
                 ctx.fillStyle = "#8892b0";
-                ctx.fillText("Te has quedado sin vidas. Haz clic o presiona ESPACIO para reiniciar", LW / 2, LH / 2 + 20);
+                ctx.fillText("Te has quedado sin vidas.", LW / 2, LH / 2 + 20);
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText("Haz clic, ESPACIO o ENTER para reiniciar  ·  ESC: menú", LW / 2, LH / 2 + 50);
                 ctx.restore();
                 return;
             }
@@ -1445,6 +1473,10 @@
                 ctx.shadowColor = "#00f0ff";
                 ctx.shadowBlur = 15;
                 ctx.fillText("¡Destruiste el Núcleo Elysium!", LW / 2, LH / 2 + 10);
+                ctx.shadowBlur = 0;
+                ctx.font = "14px sans-serif";
+                ctx.fillStyle = "#8892b0";
+                ctx.fillText("Haz clic o presiona ENTER para jugar de nuevo  ·  ESC: menú", LW / 2, LH / 2 + 50);
                 ctx.restore();
 
                 fuegosArtificiales.forEach(fw => {
@@ -1729,7 +1761,7 @@
 
             // DIBUJO DEL JUGADOR
             dibujarFx();
-            dibujarPersonaje(player, "#00f0ff", nivel.color);
+            dibujarPersonaje(player, colorSkin(), nivel.color, skin);
 
             // PARTICULAS DE PERDER VIDA
             particulasPerderVida.forEach(pt => {
@@ -1797,7 +1829,7 @@
             temblorPantalla = 0;
             ultFlash = 0;
             mp = {
-                jug: [0, 1].map(i => ({ x: 300 + i * 200, y: 350, vy: 0, vidas: 3, vivo: true, inv: 0, parrys: 0, dano: 0, carga: 0, color: i === 0 ? "#00f0ff" : "#ffaa00" })),
+                jug: [0, 1].map(i => ({ x: 300 + i * 200, y: 350, vy: 0, vidas: 3, vivo: true, inv: 0, parrys: 0, dano: 0, carga: 0, color: i === 0 ? colorSkin() : colorJ2() })),
                 boss: { x: 400, y: 100, radius: 40, vida: 20, vidaMax: 20, fase: 1 },
                 proy: [], rayos: [], parts: [], textos: [], fin: null, finTimer: 0
             };
@@ -2109,7 +2141,7 @@
             mp.jug.forEach((p, i) => {
                 if (!p.vivo) return;
                 if (p.inv > 0 && Math.floor(p.inv / 5) % 2 === 0) return;
-                dibujarPersonaje(p, p.color, p.color);
+                dibujarPersonaje(p, p.color, p.color, i === 0 ? skin : SKIN_J2);
                 ctx.save();
                 ctx.fillStyle = p.color;
                 ctx.font = "bold 11px sans-serif";
@@ -2246,7 +2278,7 @@
             let t = u.t;
             ctx.save();
             if (t < 40) {
-                // Carga: pantalla oscura, anillos que convergen, estrella giratoria y n\u00facleo de luz
+                // Carga: pantalla oscura, anillos que convergen, estrella giratoria y núcleo de luz
                 ctx.fillStyle = `rgba(0, 0, 12, ${Math.min(0.5, t / 50)})`;
                 ctx.fillRect(0, 0, LW, LH);
                 ctx.translate(u.x, u.y);
@@ -2275,7 +2307,7 @@
                 ctx.arc(0, 0, 6 + t * 0.45, 0, Math.PI * 2);
                 ctx.fill();
             } else if (t < 90) {
-                // Rayo: haz grueso con n\u00facleo blanco, rel\u00e1mpagos y ondas de choque
+                // Rayo: haz grueso con núcleo blanco, relámpagos y ondas de choque
                 let p = (t - 40) / 50;
                 let w = 12 + 58 * (1 - p);
                 ctx.lineCap = "round";
@@ -2400,7 +2432,7 @@
         function mpUlti(i) {
             let p = mp.jug[i];
             p.carga = 0;
-            mp.ult = { t: 0, x: p.x, y: p.y, color: i === 0 ? "#00f0ff" : "#ffaa00", por: i };
+            mp.ult = { t: 0, x: p.x, y: p.y, color: p.color, por: i };
             playSound('echo');
         }
 
@@ -2477,7 +2509,7 @@
             ctx.restore();
         }
 
-        // Se llama una vez por frame, despu\u00e9s de las colisiones
+        // Se llama una vez por frame, después de las colisiones
         function visualTick(e, dir, color) {
             let v = visOf(e);
             v.t++;
@@ -2494,7 +2526,7 @@
                 v.doble = false;
                 fxAterrizaje(e.x, pies, f, color);
             }
-            // despegue (el doble salto fija prevVy para no contarse aqu\u00ed)
+            // despegue (el doble salto fija prevVy para no contarse aquí)
             if (e.vy < -5 && v.prevVy > -5) {
                 if (!aterrizo) { v.sx = 0.78; v.sy = 1.25; }
                 for (let k = 0; k < 5; k++) {
@@ -2547,23 +2579,52 @@
             }
             if (code !== "KeyW" && code !== "ArrowUp") return;
             if (estadoJuego === "TUTORIAL") {
-                intentarDoble(player, "#00ff88");
+                intentarDoble(player, colorSkin());
             } else if (estadoJuego === "JUEGO" && !gameOver && !esperandoSiguienteNivel && !juegoTerminado && boss.animDefeatedTimer === 0) {
-                intentarDoble(player, nivel.color);
+                intentarDoble(player, colorSkin());
             }
         }
 
         // Personaje: orbe-robot con visor, antena, propulsor y squash & stretch
-        function dibujarPersonaje(e, acento, glow) {
+        function oscurecer(hex, f) {
+            let n = parseInt(hex.slice(1), 16);
+            return `rgb(${Math.round(((n >> 16) & 255) * f)}, ${Math.round(((n >> 8) & 255) * f)}, ${Math.round((n & 255) * f)})`;
+        }
+
+        // Personaje: orbe-robot con visor, antena, propulsor, squash & stretch, ropa y accesorios
+        function dibujarPersonaje(e, acento, glow, sk) {
+            sk = sk || { ojos: 0, cabeza: 0, ropa: 0 };
             let v = visOf(e);
             let r = 12;
             let aire = e.vy !== 0;
+            let m = v.face;
+            let sway = -v.tilt * 18 - (aire ? Math.max(-6, Math.min(6, e.vy * 0.5)) : 0) + Math.sin(v.t * 0.2) * 1.5;
+            let alz = aire ? Math.max(-5, Math.min(7, e.vy * 0.6)) : 0;
+            let conAntena = sk.cabeza === 0 || sk.cabeza === 6;
+
             ctx.save();
             ctx.translate(e.x, e.y + r);
             ctx.rotate(v.tilt);
             ctx.scale(v.sx, v.sy);
             ctx.translate(0, -r);
 
+            // Capa (detrás del cuerpo)
+            if (sk.ropa === 1) {
+                let gc2 = ctx.createLinearGradient(0, -4, 0, 18);
+                gc2.addColorStop(0, oscurecer(acento, 0.75));
+                gc2.addColorStop(1, oscurecer(acento, 0.3));
+                ctx.fillStyle = gc2;
+                ctx.beginPath();
+                ctx.moveTo(-8, -3);
+                ctx.lineTo(8, -3);
+                ctx.quadraticCurveTo(14 + sway * 0.6, 8, 11 + sway, 17 - alz);
+                ctx.quadraticCurveTo(sway * 0.6, 20 - alz, -11 + sway, 17 - alz);
+                ctx.quadraticCurveTo(-14 + sway * 0.6, 8, -8, -3);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Propulsor
             if (aire) {
                 let largo = 5 + Math.min(10, Math.abs(e.vy)) * 0.9 + Math.sin(v.t * 0.8) * 2;
                 let gp = ctx.createLinearGradient(0, r - 2, 0, r + largo);
@@ -2578,20 +2639,24 @@
                 ctx.fill();
             }
 
-            let ax = Math.sin(v.t * 0.12) * 2 - v.tilt * 14;
-            ctx.strokeStyle = acento;
-            ctx.lineWidth = 2;
-            ctx.shadowColor = acento;
-            ctx.shadowBlur = 8;
-            ctx.beginPath();
-            ctx.moveTo(0, -r + 1);
-            ctx.quadraticCurveTo(ax * 0.4, -r - 6, ax, -r - 11);
-            ctx.stroke();
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(ax, -r - 11, 3 + Math.sin(v.t * 0.15) * 1.2, 0, Math.PI * 2);
-            ctx.fill();
+            // Antena
+            if (conAntena) {
+                let ax = Math.sin(v.t * 0.12) * 2 - v.tilt * 14;
+                ctx.strokeStyle = acento;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = acento;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(0, -r + 1);
+                ctx.quadraticCurveTo(ax * 0.4, -r - 6, ax, -r - 11);
+                ctx.stroke();
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(ax, -r - 11, 3 + Math.sin(v.t * 0.15) * 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
 
+            // Cuerpo
             ctx.shadowColor = glow;
             ctx.shadowBlur = 16;
             let g = ctx.createRadialGradient(-4, -5, 1, 0, 0, r);
@@ -2613,30 +2678,163 @@
             ctx.fillRect(-r - 2, -3, 3, 6);
             ctx.fillRect(r - 1, -3, 3, 6);
 
-            let m = v.face;
+            // Bufanda y corbatín
+            if (sk.ropa === 2) {
+                ctx.strokeStyle = "#ff3355";
+                ctx.lineCap = "round";
+                ctx.lineWidth = 4.2;
+                ctx.beginPath();
+                ctx.ellipse(0, 5.5, 10.6, 3.6, 0, 0.12, Math.PI - 0.12);
+                ctx.stroke();
+                ctx.lineWidth = 3.4;
+                ctx.beginPath();
+                ctx.moveTo(-m * 7, 8.5);
+                ctx.quadraticCurveTo(-m * (12 - sway * 0.2), 10, -m * (13 - sway * 0.6), 17 - alz * 0.5);
+                ctx.stroke();
+                ctx.lineCap = "butt";
+            } else if (sk.ropa === 3) {
+                ctx.fillStyle = "#ff3355";
+                ctx.beginPath();
+                ctx.moveTo(0, 8); ctx.lineTo(-6, 4.5); ctx.lineTo(-6, 11.5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(0, 8); ctx.lineTo(6, 4.5); ctx.lineTo(6, 11.5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#ffd0d8";
+                ctx.beginPath();
+                ctx.arc(0, 8, 1.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Visor y ojos
             let oy = Math.max(-2, Math.min(2, e.vy * 0.2));
             ctx.fillStyle = "#0a1020";
             ctx.beginPath();
             ctx.ellipse(m * 2.5, -1 + oy * 0.5, 8, 5, 0, 0, Math.PI * 2);
             ctx.fill();
             let parp = (v.t % 200) < 6 ? 0.2 : 1;
-            ctx.fillStyle = acento;
-            ctx.shadowColor = acento;
+            let colOjo = sk.ojos === 3 ? "#ff3355" : acento;
+            ctx.fillStyle = colOjo;
+            ctx.strokeStyle = colOjo;
+            ctx.shadowColor = colOjo;
             ctx.shadowBlur = 8;
-            [1, 6].forEach(ox => {
+            ctx.lineWidth = 1.8;
+            ctx.lineCap = "round";
+            if (sk.ojos === 1) {
                 ctx.beginPath();
-                ctx.ellipse(m * ox, -1 + oy, 2, 2 * parp, 0, 0, Math.PI * 2);
+                ctx.ellipse(m * 3, -1 + oy, 3.2, 3.2 * parp, 0, 0, Math.PI * 2);
                 ctx.fill();
-            });
+            } else if (sk.ojos === 2) {
+                [1, 6].forEach(ox => {
+                    ctx.beginPath();
+                    ctx.arc(m * ox, 0.5 + oy, 2.2, Math.PI * 1.1, Math.PI * 1.9);
+                    ctx.stroke();
+                });
+            } else {
+                [1, 6].forEach(ox => {
+                    ctx.beginPath();
+                    ctx.ellipse(m * ox, -1 + oy, 2, 2 * parp, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                if (sk.ojos === 3) {
+                    ctx.shadowBlur = 0;
+                    [1, 6].forEach(ox => {
+                        let d = m * Math.sign(3.5 - ox);
+                        ctx.beginPath();
+                        ctx.moveTo(m * ox - d * 3.2, -5.2 + oy);
+                        ctx.lineTo(m * ox + d * 3.2, -2.8 + oy);
+                        ctx.stroke();
+                    });
+                }
+            }
             ctx.shadowBlur = 0;
+            ctx.lineCap = "butt";
+
+            // Brillo
             ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
             ctx.beginPath();
             ctx.ellipse(-4, -7, 3, 1.6, -0.5, 0, Math.PI * 2);
             ctx.fill();
+
+            // Accesorios de cabeza
+            let cb = sk.cabeza;
+            if (cb === 1) { // corona
+                let gc = ctx.createLinearGradient(0, -21, 0, -10);
+                gc.addColorStop(0, "#fff3a0");
+                gc.addColorStop(1, "#d4a017");
+                ctx.fillStyle = gc;
+                ctx.beginPath();
+                ctx.moveTo(-8, -10); ctx.lineTo(-9, -19); ctx.lineTo(-4.5, -14.5); ctx.lineTo(0, -21);
+                ctx.lineTo(4.5, -14.5); ctx.lineTo(9, -19); ctx.lineTo(8, -10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#ff0055";
+                ctx.beginPath(); ctx.arc(0, -13.5, 1.5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#00f0ff";
+                ctx.beginPath(); ctx.arc(-4.8, -12.3, 1.1, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(4.8, -12.3, 1.1, 0, Math.PI * 2); ctx.fill();
+            } else if (cb === 2) { // sombrero de copa
+                ctx.fillStyle = "#12121c";
+                ctx.fillRect(-6.5, -23, 13, 12);
+                ctx.beginPath(); ctx.ellipse(0, -11.5, 11.5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = acento;
+                ctx.fillRect(-6.5, -15.5, 13, 2.5);
+                ctx.fillStyle = "#1f1f30";
+                ctx.beginPath(); ctx.ellipse(0, -23, 6.5, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+            } else if (cb === 3) { // halo
+                let hy = -19 + Math.sin(v.t * 0.08) * 1.5;
+                ctx.strokeStyle = "#ffe066";
+                ctx.shadowColor = "#ffe066";
+                ctx.shadowBlur = 10;
+                ctx.lineWidth = 2.2;
+                ctx.beginPath(); ctx.ellipse(0, hy, 8, 2.6, 0, 0, Math.PI * 2); ctx.stroke();
+                ctx.shadowBlur = 0;
+            } else if (cb === 4) { // cuernos
+                ctx.fillStyle = "#e0143c";
+                [-1, 1].forEach(sd => {
+                    ctx.beginPath();
+                    ctx.moveTo(sd * 5, -10.5);
+                    ctx.quadraticCurveTo(sd * 12, -12, sd * 9, -21);
+                    ctx.quadraticCurveTo(sd * 8.5, -14.5, sd * 2.5, -11.5);
+                    ctx.closePath();
+                    ctx.fill();
+                });
+            } else if (cb === 5) { // orejas de gato
+                [-1, 1].forEach(sd => {
+                    ctx.fillStyle = oscurecer(acento, 0.8);
+                    ctx.beginPath();
+                    ctx.moveTo(sd * 10, -5); ctx.lineTo(sd * 9, -19); ctx.lineTo(sd * 2.5, -11.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = "#ff9ec4";
+                    ctx.beginPath();
+                    ctx.moveTo(sd * 8.2, -8.5); ctx.lineTo(sd * 7.8, -15.5); ctx.lineTo(sd * 4.2, -11.4);
+                    ctx.closePath();
+                    ctx.fill();
+                });
+            } else if (cb === 6) { // gafas de sol
+                ctx.fillStyle = "#05060a";
+                ctx.strokeStyle = acento;
+                ctx.lineWidth = 1.5;
+                [1.2, 7].forEach(ox => {
+                    ctx.beginPath();
+                    ctx.ellipse(m * ox, -1 + oy, 3.4, 3.2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+                    ctx.beginPath();
+                    ctx.moveTo(m * ox - 1.5, -2.6 + oy);
+                    ctx.lineTo(m * ox + 0.2, -3.6 + oy);
+                    ctx.stroke();
+                    ctx.strokeStyle = acento;
+                });
+            }
             ctx.restore();
         }
 
-        // Fondo con parallax: nebulosas, estrellas lejanas y ruinas cibern\u00e9ticas
+        // Fondo con parallax: nebulosas, estrellas lejanas y ruinas cibernéticas
         let ruinas = [];
         for (let capa = 0; capa < 2; capa++) {
             let rx = -80;
@@ -2708,6 +2906,183 @@
             ctx.fillRect(0, LH - 170, LW, 170);
             ctx.restore();
         }
+
+        // --- VESTIMENTAS: personalización del personaje (se guarda en el navegador) ---
+        const SKIN_COLORES = ["#00f0ff", "#00ff88", "#ff0055", "#ffd700", "#b000ff", "#ff7a00", "#ff66cc", "#ffffff"];
+        const SKIN_OJOS = ["NORMAL", "CÍCLOPE", "FELIZ", "ENOJADO"];
+        const SKIN_CABEZA = ["NADA", "CORONA", "SOMBRERO", "HALO", "CUERNOS", "GATO", "GAFAS"];
+        const SKIN_ROPA = ["NADA", "CAPA", "BUFANDA", "CORBATÍN"];
+        const SKIN_J2 = { color: 0, ojos: 0, cabeza: 0, ropa: 0 };
+        let skin = { color: 0, ojos: 0, cabeza: 0, ropa: 0 };
+        let gameOverDesde = 0;
+        const skinPrev = { x: 0, y: 0, vy: 0 };
+
+        function colorSkin() { return SKIN_COLORES[skin.color]; }
+        function colorJ2() {
+            let c = colorSkin();
+            return (c === "#ff7a00" || c === "#ffd700") ? "#00f0ff" : "#ffaa00";
+        }
+
+        function guardarSkin() {
+            try { localStorage.setItem("elysium_skin", JSON.stringify(skin)); } catch (err) {}
+        }
+
+        function cargarSkin() {
+            try {
+                let d = localStorage.getItem("elysium_skin");
+                if (!d) return;
+                let o = JSON.parse(d);
+                if (o && o.color >= 0 && o.color < SKIN_COLORES.length) skin.color = o.color | 0;
+                if (o && o.ojos >= 0 && o.ojos < SKIN_OJOS.length) skin.ojos = o.ojos | 0;
+                if (o && o.cabeza >= 0 && o.cabeza < SKIN_CABEZA.length) skin.cabeza = o.cabeza | 0;
+                if (o && o.ropa >= 0 && o.ropa < SKIN_ROPA.length) skin.ropa = o.ropa | 0;
+            } catch (err) {}
+        }
+
+        function vestLayout() {
+            let L = [];
+            SKIN_COLORES.forEach((c, i) => L.push({ cat: "color", val: i, x: 345 + i * 52, y: 108, w: 40, h: 40, color: c }));
+            SKIN_OJOS.forEach((t, i) => L.push({ cat: "ojos", val: i, x: 330 + i * 110, y: 190, w: 100, h: 32, txt: t }));
+            SKIN_CABEZA.forEach((t, i) => L.push({ cat: "cabeza", val: i, x: 330 + (i % 4) * 110, y: 255 + Math.floor(i / 4) * 40, w: 100, h: 32, txt: t }));
+            SKIN_ROPA.forEach((t, i) => L.push({ cat: "ropa", val: i, x: 330 + i * 110, y: 365, w: 100, h: 32, txt: t }));
+            return L;
+        }
+
+        function clickVestimentas() {
+            if (mouseX >= 50 && mouseX <= 220 && mouseY >= 440 && mouseY <= 480) {
+                playSound('button');
+                estadoJuego = "MENU";
+                return;
+            }
+            if (mouseX >= 590 && mouseX <= 760 && mouseY >= 440 && mouseY <= 480) {
+                playSound('button');
+                skin.color = Math.floor(Math.random() * SKIN_COLORES.length);
+                skin.ojos = Math.floor(Math.random() * SKIN_OJOS.length);
+                skin.cabeza = Math.floor(Math.random() * SKIN_CABEZA.length);
+                skin.ropa = Math.floor(Math.random() * SKIN_ROPA.length);
+                guardarSkin();
+                return;
+            }
+            let lista = vestLayout();
+            for (let k = 0; k < lista.length; k++) {
+                let o = lista[k];
+                if (mouseX >= o.x && mouseX <= o.x + o.w && mouseY >= o.y && mouseY <= o.y + o.h) {
+                    skin[o.cat] = o.val;
+                    guardarSkin();
+                    playSound('button');
+                    return;
+                }
+            }
+        }
+
+        // Personaje de muestra que salta y mira hacia el ratón
+        function dibujarPreviewSkin(cx, suelo, esc, saltar) {
+            let e = skinPrev;
+            let v = visOf(e);
+            v.t++;
+            v.face = mouseX < cx ? -1 : 1;
+            v.tilt += (0 - v.tilt) * 0.2;
+            let ph = (contadorFrames % 150) / 75;
+            let aire = saltar && ph < 1;
+            let h = 0;
+            e.vy = 0;
+            if (aire) {
+                h = 22 * 4 * ph * (1 - ph);
+                e.vy = -3.5 * (1 - 2 * ph) || 0.01;
+            }
+            if (v.prevAire && !aire) { v.sx = 1.35; v.sy = 0.7; }
+            v.prevAire = aire;
+            let tsy = aire ? 1 + Math.min(0.28, Math.abs(e.vy) * 0.07) : 1;
+            let tsx = aire ? 1 - (tsy - 1) * 0.7 : 1;
+            v.sx += (tsx - v.sx) * 0.2;
+            v.sy += (tsy - v.sy) * 0.2;
+
+            ctx.save();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+            ctx.beginPath();
+            ctx.ellipse(cx, suelo + 1, 13 * esc * (1 - h / 60), 3 * esc * 0.9, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(cx, suelo - 12 * esc - h * esc);
+            ctx.scale(esc, esc);
+            dibujarPersonaje(e, colorSkin(), colorSkin(), skin);
+            ctx.restore();
+        }
+
+        function dibujarVestimentas() {
+            ctx.save();
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#ffd700";
+            ctx.font = "bold 28px sans-serif";
+            ctx.shadowColor = "#ffd700";
+            ctx.shadowBlur = 20;
+            ctx.fillText("VESTIMENTAS", LW / 2, 48);
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = "rgba(10, 10, 20, 0.75)";
+            ctx.strokeStyle = colorSkin();
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(50, 80, 250, 340);
+            ctx.strokeRect(50, 80, 250, 340);
+            ctx.font = "12px sans-serif";
+            ctx.fillStyle = "#8892b0";
+            ctx.fillText("Tu personaje (mueve el ratón)", 175, 408);
+
+            ctx.textAlign = "left";
+            ctx.font = "bold 13px sans-serif";
+            ctx.fillStyle = "#ffd700";
+            ctx.fillText("COLOR", 330, 98);
+            ctx.fillText("OJOS", 330, 180);
+            ctx.fillText("CABEZA", 330, 245);
+            ctx.fillText("ROPA", 330, 355);
+            ctx.restore();
+
+            dibujarPreviewSkin(175, 350, 4, true);
+
+            vestLayout().forEach(o => {
+                let activo = skin[o.cat] === o.val;
+                let hover = mouseX >= o.x && mouseX <= o.x + o.w && mouseY >= o.y && mouseY <= o.y + o.h;
+                ctx.save();
+                if (o.color) {
+                    let cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+                    ctx.fillStyle = o.color;
+                    ctx.shadowColor = o.color;
+                    ctx.shadowBlur = activo ? 18 : (hover ? 12 : 4);
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    if (activo || hover) {
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = activo ? 3 : 1.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 19.5, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                } else {
+                    ctx.fillStyle = activo ? hexA(colorSkin(), 0.35) : "rgba(15, 23, 42, 0.9)";
+                    ctx.strokeStyle = activo ? colorSkin() : (hover ? "#ffffff" : "#334155");
+                    ctx.lineWidth = activo ? 2 : 1.2;
+                    ctx.shadowColor = colorSkin();
+                    ctx.shadowBlur = activo ? 12 : 0;
+                    ctx.fillRect(o.x, o.y, o.w, o.h);
+                    ctx.strokeRect(o.x, o.y, o.w, o.h);
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = activo ? "#ffffff" : "#b8c2dc";
+                    ctx.font = "bold 12px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(o.txt, o.x + o.w / 2, o.y + o.h / 2 + 4);
+                }
+                ctx.restore();
+            });
+
+            dibujarBoton(50, 440, 170, 40, "VOLVER AL MENÚ", "#ff0055");
+            dibujarBoton(590, 440, 170, 40, "ALEATORIO", "#b000ff");
+        }
+
+        cargarSkin();
 
         function loop() {
             actualizar();
